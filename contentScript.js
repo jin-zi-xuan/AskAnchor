@@ -109,6 +109,7 @@
   let pendingFollowUp = null;
   let pendingFollowUpTimer = null;
   let pendingFollowUpPollTimer = null;
+  let sentQuestionStabilizeTimer = null;
   let selectionTimer = null;
 
   document.addEventListener("selectionchange", () => {
@@ -417,8 +418,7 @@
       return;
     }
 
-    sentQuestion.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-    brieflyHighlight(sentQuestion);
+    focusSentQuestion(sentQuestion);
     clearPendingFollowUp();
   }
 
@@ -521,7 +521,7 @@
       element.id
     ].join(" ").toLowerCase();
 
-    return /send|submit|arrow-up|paper-airplane|发送|送出|提交/.test(haystack);
+    return /send|submit|arrow-up|paper-airplane|\u53d1\u9001|\u9001\u51fa|\u63d0\u4ea4/.test(haystack);
   }
 
   function clearPendingFollowUp() {
@@ -550,6 +550,38 @@
     }
 
     return editor.innerText || editor.textContent || "";
+  }
+
+  function focusSentQuestion(element) {
+    window.clearInterval(sentQuestionStabilizeTimer);
+
+    let attempts = 0;
+    const keepInView = () => {
+      if (!element || !document.contains(element)) {
+        window.clearInterval(sentQuestionStabilizeTimer);
+        sentQuestionStabilizeTimer = null;
+        return;
+      }
+
+      element.scrollIntoView({
+        behavior: attempts === 0 ? "smooth" : "auto",
+        block: "center",
+        inline: "nearest"
+      });
+
+      if (attempts === 0) {
+        brieflyHighlight(element);
+      }
+
+      attempts += 1;
+      if (attempts >= 6) {
+        window.clearInterval(sentQuestionStabilizeTimer);
+        sentQuestionStabilizeTimer = null;
+      }
+    };
+
+    keepInView();
+    sentQuestionStabilizeTimer = window.setInterval(keepInView, 450);
   }
 
   function buildFollowUpPrompt(selectedText, context) {
