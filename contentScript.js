@@ -5,6 +5,7 @@
   const TOAST_ID = "ask-anchor-toast";
   const HIGHLIGHT_CLASS = "ask-anchor-highlight";
   const MARKER_CLASS = "ask-anchor-selection-marker";
+  const PENDING_PROMPT_KEY = "askAnchorPendingPrompt";
   const MAX_CONTEXT_MESSAGES = 6;
   const MIN_SELECTION_LENGTH = 2;
 
@@ -107,6 +108,8 @@
   let explanationHistory = [];
   let panelFrame = null;
   let selectionTimer = null;
+
+  maybeAutofillChatGptPrompt();
 
   document.addEventListener("selectionchange", () => {
     clearTimeout(selectionTimer);
@@ -382,7 +385,8 @@
       await navigator.clipboard.writeText(prompt);
       const response = await chrome.runtime.sendMessage({
         type: "ASK_ANCHOR_OPEN_EXTERNAL_AI",
-        provider
+        provider,
+        prompt
       });
 
       if (!response || !response.ok) {
@@ -390,9 +394,11 @@
       }
 
       postPanelState({
-        externalStatus: `\u5df2\u590d\u5236 prompt\uff0c\u5e76\u6253\u5f00 ${providerName}\u5c0f\u7a97\u53e3\u3002\u5728\u8f93\u5165\u6846\u7c98\u8d34\u540e\u53d1\u9001\u5373\u53ef\u3002`
+        externalStatus: `\u5df2\u6253\u5f00 ${providerName}\u5c0f\u7a97\u53e3\u3002${provider === "chatgpt" ? "\u5df2\u5c1d\u8bd5\u81ea\u52a8\u586b\u5165 prompt\u3002" : "\u5728\u8f93\u5165\u6846\u7c98\u8d34\u540e\u53d1\u9001\u5373\u53ef\u3002"}`
       });
-      showToast(`\u5df2\u590d\u5236 prompt\uff0c\u5e76\u6253\u5f00 ${providerName}`);
+      showToast(provider === "chatgpt"
+        ? `\u5df2\u6253\u5f00 ${providerName}\uff0c\u5c06\u81ea\u52a8\u586b\u5165`
+        : `\u5df2\u590d\u5236 prompt\uff0c\u5e76\u6253\u5f00 ${providerName}`);
     } catch (error) {
       postPanelState({
         externalStatus: `\u6253\u5f00 ${providerName}\u5931\u8d25\uff1a${error.message}`
@@ -454,6 +460,88 @@
       gemini: "Gemini",
       claude: "Claude"
     }[provider] || "ChatGPT";
+  }
+
+  async function maybeAutofillChatGptPrompt() {
+    if (!["chatgpt.com", "chat.openai.com"].includes(location.hostname)) {
+      return;
+    }
+
+    try {
+      const storage = chrome.storage && chrome.storage.session;
+      if (!storage) {
+        return;
+      }
+
+      const data = await storage.get(PENDING_PROMPT_KEY);
+      const pending = data[PENDING_PROMPT_KEY];
+      if (!pending || pending.provider !== "chatgpt" || !pending.prompt) {
+        return;
+      }
+
+      if (Date.now() - pending.createdAt > 2 * 60 * 1000) {
+        await storage.remove(PENDING_PROMPT_KEY);
+        return;
+      }
+
+      const filled = await waitAndFillPrompt(pending.prompt);
+      if (filled) {
+        await storage.remove(PENDING_PROMPT_KEY);
+        showToast("\u5df2\u81ea\u52a8\u586b\u5165 ChatGPT\uff0c\u68c0\u67e5\u540e\u53d1\u9001");
+      }
+    } catch (error) {
+      console.debug("[AskAnchor] ChatGPT autofill failed:", error);
+    }
+  }
+
+  async function waitAndFillPrompt(prompt) {
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
+      const editor = findChatGptPromptEditor();
+      if (editor) {
+        fillPromptEditor(editor, prompt);
+        return true;
+      }
+
+      await delay(350);
+    }
+
+    return false;
+  }
+
+  function findChatGptPromptEditor() {
+    return document.querySelector("#prompt-textarea")
+      || document.querySelector("textarea[data-testid='prompt-textarea']")
+      || document.querySelector("textarea")
+      || document.querySelector("[contenteditable='true'][data-lexical-editor='true']")
+      || document.querySelector("[contenteditable='true'][role='textbox']")
+      || document.querySelector("[contenteditable='true']");
+  }
+
+  function fillPromptEditor(editor, prompt) {
+    editor.focus();
+
+    if (editor.tagName === "TEXTAREA" || editor.tagName === "INPUT") {
+      editor.value = prompt;
+      editor.dispatchEvent(new InputEvent("input", {
+        bubbles: true,
+        inputType: "insertText",
+        data: prompt
+      }));
+      editor.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
+
+    editor.textContent = prompt;
+    editor.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      inputType: "insertText",
+      data: prompt
+    }));
+  }
+
+  function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
   function serializeHistory() {

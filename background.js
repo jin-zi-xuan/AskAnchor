@@ -1,9 +1,10 @@
 const USE_MOCK_RESPONSE = true;
 const EXAMPLE_ENDPOINT = "https://api.example.com/explain";
+const PENDING_PROMPT_KEY = "askAnchorPendingPrompt";
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message && message.type === "ASK_ANCHOR_OPEN_EXTERNAL_AI") {
-    openExternalAiWindow(message.provider)
+    openExternalAiWindow(message.provider, message.prompt)
       .then(() => sendResponse({ ok: true }))
       .catch((error) => {
         console.error("[AskAnchor] Failed to open external AI window:", error);
@@ -33,13 +34,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-async function openExternalAiWindow(provider) {
+async function openExternalAiWindow(provider, prompt) {
   const urls = {
     chatgpt: "https://chatgpt.com/",
     gemini: "https://gemini.google.com/app",
     claude: "https://claude.ai/new"
   };
   const targetUrl = urls[provider] || urls.chatgpt;
+
+  if (provider === "chatgpt" && prompt) {
+    await chrome.storage.session.set({
+      [PENDING_PROMPT_KEY]: {
+        provider,
+        prompt,
+        createdAt: Date.now()
+      }
+    });
+  }
 
   return chrome.windows.create({
     url: targetUrl,

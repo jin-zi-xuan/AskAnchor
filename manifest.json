@@ -3,7 +3,7 @@
   "name": "AskAnchor",
   "version": "0.1.0",
   "description": "Explain selected AI response text on popular AI chat websites with context-aware side panel anchors.",
-  "permissions": ["activeTab", "scripting", "clipboardWrite", "windows"],
+  "permissions": ["activeTab", "scripting", "clipboardWrite", "windows", "storage"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
