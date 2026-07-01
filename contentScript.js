@@ -1,13 +1,14 @@
 (function initAskAnchor() {
   const BUTTON_ID = "ask-anchor-explain-button";
-  const PANEL_ID = "ask-anchor-panel-frame";
-  const RESTORE_BUTTON_ID = "ask-anchor-restore-button";
+  const DOCK_ID = "ask-anchor-anchor-dock";
+  const LIST_ID = "ask-anchor-anchor-list";
   const TOAST_ID = "ask-anchor-toast";
   const HIGHLIGHT_CLASS = "ask-anchor-highlight";
   const MARKER_CLASS = "ask-anchor-selection-marker";
-  const PENDING_PROMPT_KEY = "askAnchorPendingPrompt";
   const MAX_CONTEXT_MESSAGES = 6;
   const MIN_SELECTION_LENGTH = 2;
+  const MAX_ANCHORS = 30;
+  const ANCHOR_NAME_LENGTH = 28;
 
   const PLATFORM_ADAPTERS = [
     {
@@ -103,67 +104,22 @@
   const activeAdapter = getActiveAdapter();
   let currentSelection = null;
   let lastValidSelection = null;
-  let anchorState = null;
-  let activeHistoryId = null;
-  let explanationHistory = [];
-  let panelFrame = null;
+  let anchors = [];
   let selectionTimer = null;
-
-  maybeAutofillChatGptPrompt();
 
   document.addEventListener("selectionchange", () => {
     clearTimeout(selectionTimer);
     selectionTimer = setTimeout(handleSelectionChange, 120);
   });
-
   document.addEventListener("mouseup", handleSelectionChange);
   document.addEventListener("keyup", (event) => {
     if (event.key === "Escape") {
       hideExplainButton();
+      closeAnchorList();
       return;
     }
 
     handleSelectionChange();
-  });
-
-  window.addEventListener("message", (event) => {
-    const type = event.data && event.data.type;
-    const isAskAnchorPanelMessage = [
-      "ASK_ANCHOR_CLOSE_PANEL",
-      "ASK_ANCHOR_HIDE_PANEL",
-      "ASK_ANCHOR_SELECT_HISTORY",
-      "ASK_ANCHOR_CLEAR_HISTORY",
-      "ASK_ANCHOR_OPEN_EXTERNAL_AI",
-      "ASK_ANCHOR_RETURN_TO_SOURCE"
-    ].includes(type);
-
-    if (!isAskAnchorPanelMessage) {
-      return;
-    }
-
-    if (type === "ASK_ANCHOR_CLOSE_PANEL") {
-      closePanel();
-    }
-
-    if (type === "ASK_ANCHOR_HIDE_PANEL") {
-      hidePanel();
-    }
-
-    if (type === "ASK_ANCHOR_SELECT_HISTORY") {
-      selectHistoryEntry(event.data.id);
-    }
-
-    if (type === "ASK_ANCHOR_CLEAR_HISTORY") {
-      clearHistory();
-    }
-
-    if (type === "ASK_ANCHOR_OPEN_EXTERNAL_AI") {
-      openExternalAi(event.data.provider);
-    }
-
-    if (type === "ASK_ANCHOR_RETURN_TO_SOURCE") {
-      returnToSource();
-    }
   });
 
   function handleSelectionChange() {
@@ -205,10 +161,10 @@
       button = document.createElement("button");
       button.id = BUTTON_ID;
       button.type = "button";
-      button.textContent = "\u89e3\u91ca\u8fd9\u4e00\u6bb5";
+      button.textContent = "\u8ffd\u95ee\u8fd9\u4e00\u6bb5";
       button.addEventListener("pointerdown", keepSelectionForButton);
       button.addEventListener("mousedown", keepSelectionForButton);
-      button.addEventListener("click", handleExplainClick);
+      button.addEventListener("click", handleAskClick);
       document.documentElement.appendChild(button);
     }
 
@@ -231,7 +187,7 @@
     event.stopPropagation();
   }
 
-  async function handleExplainClick(event) {
+  async function handleAskClick(event) {
     event.preventDefault();
     event.stopPropagation();
 
@@ -240,289 +196,255 @@
       return;
     }
 
-    const selectedText = selectionSnapshot.text;
     const sourceRange = selectionSnapshot.range.cloneRange();
     const marker = createSelectionMarker(sourceRange);
-    const context = extractConversationContext(selectionSnapshot.messageElement);
-
-    anchorState = {
-      element: selectionSnapshot.messageElement,
-      marker,
+    const anchor = addAnchor({
+      text: selectionSnapshot.text,
       range: sourceRange,
-      rect: selectionSnapshot.rect,
-      scrollY: window.scrollY,
-      text: selectedText
-    };
-    activeHistoryId = null;
+      marker,
+      element: selectionSnapshot.messageElement,
+      scrollY: window.scrollY
+    });
+    const prompt = buildFollowUpPrompt(selectionSnapshot.text, extractConversationContext(selectionSnapshot.messageElement));
+    const filled = await fillCurrentAiInput(prompt);
 
     hideExplainButton();
-    await openExternalAi("chatgpt");
-  }
+    renderAnchorDock();
 
-  function openPanel(state) {
-    if (!panelFrame) {
-      panelFrame = document.createElement("iframe");
-      panelFrame.id = PANEL_ID;
-      panelFrame.title = "AskAnchor explanation panel";
-      panelFrame.src = chrome.runtime.getURL("panel.html");
-      panelFrame.addEventListener("load", () => postPanelState(state));
-      document.documentElement.appendChild(panelFrame);
+    if (filled) {
+      showToast(`\u5df2\u751f\u6210\u951a\u70b9\u300c${anchor.name}\u300d\uff0c\u5e76\u586b\u5165\u8ffd\u95ee`);
+      return;
     }
 
-    panelFrame.hidden = false;
-    panelFrame.style.display = "block";
-    hideRestoreButton();
-    postPanelState(state);
+    await copyPromptToClipboard(prompt);
+    showToast(`\u5df2\u751f\u6210\u951a\u70b9\u300c${anchor.name}\u300d\uff0c\u672a\u627e\u5230\u8f93\u5165\u6846\uff0c\u5df2\u590d\u5236`);
   }
 
-  function closePanel() {
-    if (panelFrame) {
-      panelFrame.hidden = true;
-      panelFrame.style.display = "none";
+  function addAnchor({ text, range, marker, element, scrollY }) {
+    const anchor = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name: createAnchorName(text),
+      text,
+      range,
+      marker,
+      element,
+      scrollY,
+      createdAt: new Date()
+    };
+
+    anchors.unshift(anchor);
+    anchors = anchors.slice(0, MAX_ANCHORS);
+    return anchor;
+  }
+
+  function createAnchorName(text) {
+    const normalized = String(text || "").replace(/\s+/g, " ").trim();
+    if (normalized.length <= ANCHOR_NAME_LENGTH) {
+      return normalized || "\u672a\u547d\u540d\u951a\u70b9";
     }
 
-    hideRestoreButton();
+    return `${normalized.slice(0, ANCHOR_NAME_LENGTH)}...`;
   }
 
-  function hidePanel() {
-    if (panelFrame) {
-      panelFrame.hidden = true;
-      panelFrame.style.display = "none";
+  function renderAnchorDock() {
+    if (anchors.length === 0) {
+      removeAnchorDock();
+      return;
     }
 
-    showRestoreButton();
-  }
+    let dock = document.getElementById(DOCK_ID);
+    if (!dock) {
+      dock = document.createElement("div");
+      dock.id = DOCK_ID;
+      dock.innerHTML = `
+        <button class="ask-anchor-dock-button" type="button" aria-expanded="false"></button>
+        <div id="${LIST_ID}" class="ask-anchor-anchor-list" hidden></div>
+      `;
+      document.documentElement.appendChild(dock);
 
-  function showRestoreButton() {
-    let button = document.getElementById(RESTORE_BUTTON_ID);
-    if (!button) {
-      button = document.createElement("button");
-      button.id = RESTORE_BUTTON_ID;
-      button.type = "button";
-      button.textContent = "AskAnchor";
-      button.title = "\u663e\u793a AskAnchor";
-      button.addEventListener("click", () => {
-        if (panelFrame) {
-          panelFrame.hidden = false;
-          panelFrame.style.display = "block";
-        }
+      dock.querySelector(".ask-anchor-dock-button").addEventListener("click", toggleAnchorList);
+    }
 
-        hideRestoreButton();
+    const button = dock.querySelector(".ask-anchor-dock-button");
+    const list = dock.querySelector(`#${LIST_ID}`);
+    button.textContent = `\u951a\u70b9 ${anchors.length}`;
+    list.innerHTML = "";
+
+    anchors.forEach((anchor, index) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "ask-anchor-anchor-item";
+      item.innerHTML = `
+        <span class="ask-anchor-anchor-index">${index + 1}</span>
+        <span class="ask-anchor-anchor-name"></span>
+      `;
+      item.querySelector(".ask-anchor-anchor-name").textContent = anchor.name;
+      item.addEventListener("click", () => {
+        closeAnchorList();
+        returnToAnchor(anchor.id);
       });
-      document.documentElement.appendChild(button);
-    }
-
-    button.hidden = false;
+      list.appendChild(item);
+    });
   }
 
-  function hideRestoreButton() {
-    const button = document.getElementById(RESTORE_BUTTON_ID);
+  function removeAnchorDock() {
+    const dock = document.getElementById(DOCK_ID);
+    if (dock) {
+      dock.remove();
+    }
+  }
+
+  function toggleAnchorList() {
+    const dock = document.getElementById(DOCK_ID);
+    if (!dock) {
+      return;
+    }
+
+    const button = dock.querySelector(".ask-anchor-dock-button");
+    const list = dock.querySelector(`#${LIST_ID}`);
+    const willOpen = list.hidden;
+    list.hidden = !willOpen;
+    button.setAttribute("aria-expanded", String(willOpen));
+  }
+
+  function closeAnchorList() {
+    const dock = document.getElementById(DOCK_ID);
+    if (!dock) {
+      return;
+    }
+
+    const button = dock.querySelector(".ask-anchor-dock-button");
+    const list = dock.querySelector(`#${LIST_ID}`);
+    if (list) {
+      list.hidden = true;
+    }
     if (button) {
-      button.hidden = true;
+      button.setAttribute("aria-expanded", "false");
     }
   }
 
-  function postPanelState(state) {
-    if (!panelFrame || !panelFrame.contentWindow) {
+  function returnToAnchor(id) {
+    const anchor = anchors.find((item) => item.id === id);
+    if (!anchor) {
       return;
     }
 
-    panelFrame.contentWindow.postMessage({
-      type: "ASK_ANCHOR_PANEL_STATE",
-      history: serializeHistory(),
-      ...state
-    }, "*");
-  }
+    const marker = anchor.marker && document.contains(anchor.marker) ? anchor.marker : null;
+    const target = anchor.element && document.contains(anchor.element) ? anchor.element : null;
 
-  function addHistoryEntry({ selectedText, explanation, anchor, error = false }) {
-    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    explanationHistory.unshift({
-      id,
-      selectedText,
-      explanation,
-      anchor,
-      error,
-      createdAt: new Date().toISOString()
-    });
-    explanationHistory = explanationHistory.slice(0, 30);
-    activeHistoryId = id;
-    return id;
-  }
-
-  function selectHistoryEntry(id) {
-    const entry = explanationHistory.find((item) => item.id === id);
-    if (!entry) {
+    if (marker) {
+      marker.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      brieflyHighlight(target || marker);
+      restoreSelectionHighlight(anchor.range);
       return;
     }
 
-    anchorState = entry.anchor;
-    activeHistoryId = entry.id;
-    openPanel({
-      activeHistoryId: entry.id,
-      selectedText: entry.selectedText,
-      explanation: entry.explanation,
-      loading: false,
-      error: entry.error
-    });
-  }
-
-  function clearHistory() {
-    explanationHistory = [];
-    activeHistoryId = null;
-    postPanelState({ activeHistoryId: null });
-  }
-
-  async function openExternalAi(provider) {
-    const prompt = buildExternalPrompt();
-    if (!prompt) {
-      postPanelState({ externalStatus: "\u8bf7\u5148\u9009\u4e2d\u4e00\u6bb5\u6587\u5b57\u3002" });
+    if (scrollToSavedRange(anchor.range)) {
+      restoreSelectionHighlight(anchor.range);
+      brieflyHighlight(target || document.documentElement);
       return;
     }
 
-    const providerName = getProviderName(provider);
-
-    try {
-      await navigator.clipboard.writeText(prompt);
-      const response = await chrome.runtime.sendMessage({
-        type: "ASK_ANCHOR_OPEN_EXTERNAL_AI",
-        provider,
-        prompt
-      });
-
-      if (!response || !response.ok) {
-        throw new Error(response && response.error ? response.error : "open failed");
-      }
-
-      postPanelState({
-        externalStatus: `\u5df2\u6253\u5f00 ${providerName}\u5c0f\u7a97\u53e3\u3002${provider === "chatgpt" ? "\u5df2\u5c1d\u8bd5\u81ea\u52a8\u586b\u5165 prompt\u3002" : "\u5728\u8f93\u5165\u6846\u7c98\u8d34\u540e\u53d1\u9001\u5373\u53ef\u3002"}`
-      });
-      showToast(provider === "chatgpt"
-        ? `\u5df2\u6253\u5f00 ${providerName}\uff0c\u5c06\u81ea\u52a8\u586b\u5165`
-        : `\u5df2\u590d\u5236 prompt\uff0c\u5e76\u6253\u5f00 ${providerName}`);
-    } catch (error) {
-      postPanelState({
-        externalStatus: `\u6253\u5f00 ${providerName}\u5931\u8d25\uff1a${error.message}`
-      });
-      showToast(`\u6253\u5f00 ${providerName}\u5931\u8d25`);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      brieflyHighlight(target);
+      return;
     }
+
+    window.scrollTo({ top: anchor.scrollY, behavior: "smooth" });
   }
 
-  function showToast(message) {
-    let toast = document.getElementById(TOAST_ID);
-    if (!toast) {
-      toast = document.createElement("div");
-      toast.id = TOAST_ID;
-      document.documentElement.appendChild(toast);
-    }
-
-    toast.textContent = message;
-    toast.hidden = false;
-    window.clearTimeout(showToast.timer);
-    showToast.timer = window.setTimeout(() => {
-      toast.hidden = true;
-    }, 2400);
-  }
-
-  function buildExternalPrompt() {
-    const selectedText = anchorState && anchorState.text
-      ? anchorState.text
-      : lastValidSelection && lastValidSelection.text;
-    const context = anchorState && anchorState.element
-      ? extractConversationContext(anchorState.element)
-      : lastValidSelection
-        ? extractConversationContext(lastValidSelection.messageElement)
-        : [];
-
-    if (!selectedText) {
-      return "";
-    }
-
+  function buildFollowUpPrompt(selectedText, context) {
     const contextText = context
       .map((item) => `${item.role}: ${item.text}`)
       .join("\n\n");
 
     return [
-      "\u8bf7\u7ed3\u5408\u5bf9\u8bdd\u4e0a\u4e0b\u6587\uff0c\u7528\u4e2d\u6587\u89e3\u91ca\u6211\u9009\u4e2d\u7684\u8fd9\u6bb5 AI \u56de\u7b54\u3002",
+      "\u8bf7\u7ed3\u5408\u4e0a\u6587\uff0c\u89e3\u91ca\u6211\u9009\u4e2d\u7684\u8fd9\u6bb5\u5185\u5bb9\u3002",
       "",
-      "\u3010\u5bf9\u8bdd\u4e0a\u4e0b\u6587\u3011",
-      contextText || "\u65e0",
-      "",
-      "\u3010\u9009\u4e2d\u6587\u672c\u3011",
+      "\u3010\u9009\u4e2d\u5185\u5bb9\u3011",
       selectedText,
+      "",
+      "\u3010\u8fd1\u671f\u5bf9\u8bdd\u4e0a\u4e0b\u6587\u3011",
+      contextText || "\u65e0",
       "",
       "\u8bf7\u8bf4\u660e\u5b83\u7684\u610f\u601d\u3001\u80cc\u540e\u903b\u8f91\u3001\u4e0e\u4e0a\u4e0b\u6587\u7684\u5173\u7cfb\uff0c\u5e76\u5c3d\u91cf\u7b80\u6d01\u3002"
     ].join("\n");
   }
 
-  function getProviderName(provider) {
-    return {
-      chatgpt: "ChatGPT",
-      gemini: "Gemini",
-      claude: "Claude"
-    }[provider] || "ChatGPT";
-  }
-
-  async function maybeAutofillChatGptPrompt() {
-    if (!["chatgpt.com", "chat.openai.com"].includes(location.hostname)) {
-      return;
+  async function fillCurrentAiInput(prompt) {
+    const editor = await waitForPromptEditor();
+    if (!editor) {
+      return false;
     }
 
-    try {
-      const storage = chrome.storage && chrome.storage.session;
-      if (!storage) {
-        return;
-      }
-
-      const data = await storage.get(PENDING_PROMPT_KEY);
-      const pending = data[PENDING_PROMPT_KEY];
-      if (!pending || pending.provider !== "chatgpt" || !pending.prompt) {
-        return;
-      }
-
-      if (Date.now() - pending.createdAt > 2 * 60 * 1000) {
-        await storage.remove(PENDING_PROMPT_KEY);
-        return;
-      }
-
-      const filled = await waitAndFillPrompt(pending.prompt);
-      if (filled) {
-        await storage.remove(PENDING_PROMPT_KEY);
-        showToast("\u5df2\u81ea\u52a8\u586b\u5165 ChatGPT\uff0c\u68c0\u67e5\u540e\u53d1\u9001");
-      }
-    } catch (error) {
-      console.debug("[AskAnchor] ChatGPT autofill failed:", error);
-    }
+    fillPromptEditor(editor, prompt);
+    return true;
   }
 
-  async function waitAndFillPrompt(prompt) {
-    const deadline = Date.now() + 20000;
+  async function waitForPromptEditor() {
+    const deadline = Date.now() + 3500;
     while (Date.now() < deadline) {
-      const editor = findChatGptPromptEditor();
+      const editor = findPromptEditor();
       if (editor) {
-        fillPromptEditor(editor, prompt);
-        return true;
+        return editor;
       }
 
-      await delay(350);
+      await delay(180);
     }
 
-    return false;
+    return null;
   }
 
-  function findChatGptPromptEditor() {
-    return document.querySelector("#prompt-textarea")
-      || document.querySelector("textarea[data-testid='prompt-textarea']")
-      || document.querySelector("textarea")
-      || document.querySelector("[contenteditable='true'][data-lexical-editor='true']")
-      || document.querySelector("[contenteditable='true'][role='textbox']")
-      || document.querySelector("[contenteditable='true']");
+  function findPromptEditor() {
+    const selectors = [
+      "#prompt-textarea",
+      "textarea[data-testid='prompt-textarea']",
+      "[data-testid='chat-input'] textarea",
+      "[data-testid='composer'] textarea",
+      "[aria-label*='Message']",
+      "[aria-label*='Ask']",
+      "[aria-label*='Send']",
+      "[aria-label*='\u8f93\u5165']",
+      "[aria-label*='\u63d0\u95ee']",
+      "[placeholder*='Message']",
+      "[placeholder*='Ask']",
+      "[placeholder*='\u8f93\u5165']",
+      "[placeholder*='\u63d0\u95ee']",
+      "textarea",
+      "[contenteditable='true'][data-lexical-editor='true']",
+      "[contenteditable='true'][role='textbox']",
+      "[contenteditable='true']"
+    ];
+
+    return selectors
+      .map((selector) => document.querySelector(selector))
+      .find((node) => (
+        node
+        && isPromptEditorCandidate(node)
+        && !node.closest(`#${DOCK_ID}, #${BUTTON_ID}, #${TOAST_ID}`)
+        && isVisible(node)
+      ));
+  }
+
+  function isPromptEditorCandidate(node) {
+    return node.tagName === "TEXTAREA"
+      || node.tagName === "INPUT"
+      || node.getAttribute("contenteditable") === "true"
+      || node.getAttribute("role") === "textbox";
   }
 
   function fillPromptEditor(editor, prompt) {
     editor.focus();
 
     if (editor.tagName === "TEXTAREA" || editor.tagName === "INPUT") {
-      editor.value = prompt;
+      const setter = Object.getOwnPropertyDescriptor(editor.constructor.prototype, "value")?.set;
+      if (setter) {
+        setter.call(editor, prompt);
+      } else {
+        editor.value = prompt;
+      }
+
       editor.dispatchEvent(new InputEvent("input", {
         bubbles: true,
         inputType: "insertText",
@@ -532,7 +454,17 @@
       return;
     }
 
-    editor.textContent = prompt;
+    const selection = window.getSelection();
+    const range = document.createRange();
+    editor.textContent = "";
+    range.selectNodeContents(editor);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    if (!document.execCommand("insertText", false, prompt)) {
+      editor.textContent = prompt;
+    }
+
     editor.dispatchEvent(new InputEvent("input", {
       bubbles: true,
       inputType: "insertText",
@@ -540,50 +472,15 @@
     }));
   }
 
-  function delay(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
-  }
-
-  function serializeHistory() {
-    return explanationHistory.map((entry) => ({
-      id: entry.id,
-      selectedText: entry.selectedText,
-      explanation: entry.explanation,
-      error: entry.error,
-      createdAt: entry.createdAt,
-      active: entry.id === activeHistoryId
-    }));
-  }
-
-  function returnToSource() {
-    if (!anchorState) {
-      return;
-    }
-
-    const marker = anchorState.marker && document.contains(anchorState.marker)
-      ? anchorState.marker
-      : null;
-    const target = anchorState.element && document.contains(anchorState.element)
-      ? anchorState.element
-      : null;
-
-    if (marker) {
-      marker.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-      restoreSelectionHighlight(anchorState.range);
-      brieflyHighlight(marker);
-    } else if (scrollToSavedRange(anchorState.range)) {
-      restoreSelectionHighlight(anchorState.range);
-    } else if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
-      brieflyHighlight(target);
-    } else {
-      window.scrollTo({ top: anchorState.scrollY, behavior: "smooth" });
+  async function copyPromptToClipboard(prompt) {
+    try {
+      await navigator.clipboard.writeText(prompt);
+    } catch (error) {
+      console.debug("[AskAnchor] Clipboard fallback failed:", error);
     }
   }
 
   function createSelectionMarker(range) {
-    removeExistingMarkers();
-
     const marker = document.createElement("span");
     marker.className = MARKER_CLASS;
     marker.setAttribute("aria-hidden", "true");
@@ -598,10 +495,6 @@
       console.debug("[AskAnchor] Failed to create selection marker:", error);
       return null;
     }
-  }
-
-  function removeExistingMarkers() {
-    document.querySelectorAll(`.${MARKER_CLASS}`).forEach((marker) => marker.remove());
   }
 
   function scrollToSavedRange(range) {
@@ -639,15 +532,35 @@
   }
 
   function brieflyHighlight(element) {
+    if (!element || element === document.documentElement) {
+      return;
+    }
+
     element.classList.add(HIGHLIGHT_CLASS);
     window.setTimeout(() => {
       element.classList.remove(HIGHLIGHT_CLASS);
     }, 1400);
   }
 
+  function showToast(message) {
+    let toast = document.getElementById(TOAST_ID);
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = TOAST_ID;
+      document.documentElement.appendChild(toast);
+    }
+
+    toast.textContent = message;
+    toast.hidden = false;
+    window.clearTimeout(showToast.timer);
+    showToast.timer = window.setTimeout(() => {
+      toast.hidden = true;
+    }, 2400);
+  }
+
   function findAssistantMessageElement(node) {
     const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-    if (!element || isInsideEditable(element)) {
+    if (!element || isInsideEditable(element) || element.closest(`#${DOCK_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
       return null;
     }
 
@@ -795,6 +708,12 @@
     ].join(",")));
   }
 
+  function isVisible(node) {
+    const rect = node.getBoundingClientRect();
+    const style = window.getComputedStyle(node);
+    return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+  }
+
   function closestFromSelectors(element, selectors) {
     for (const selector of selectors.filter(Boolean)) {
       try {
@@ -836,5 +755,9 @@
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 3000);
+  }
+
+  function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 })();
