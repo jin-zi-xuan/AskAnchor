@@ -1,5 +1,6 @@
 const selectedEl = document.getElementById("ask-anchor-selected");
 const resultEl = document.getElementById("ask-anchor-result");
+const hideButton = document.getElementById("ask-anchor-hide");
 const closeButton = document.getElementById("ask-anchor-close");
 const returnButton = document.getElementById("ask-anchor-return");
 
@@ -13,6 +14,10 @@ window.addEventListener("message", (event) => {
   resultEl.textContent = data.explanation || "";
   resultEl.dataset.loading = data.loading ? "true" : "false";
   resultEl.dataset.error = data.error ? "true" : "false";
+});
+
+hideButton.addEventListener("click", () => {
+  window.parent.postMessage({ type: "ASK_ANCHOR_HIDE_PANEL" }, "*");
 });
 
 closeButton.addEventListener("click", () => {

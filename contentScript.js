@@ -1,6 +1,7 @@
 (function initAskAnchor() {
   const BUTTON_ID = "ask-anchor-explain-button";
   const PANEL_ID = "ask-anchor-panel-frame";
+  const RESTORE_BUTTON_ID = "ask-anchor-restore-button";
   const HIGHLIGHT_CLASS = "ask-anchor-highlight";
   const MARKER_CLASS = "ask-anchor-selection-marker";
   const MAX_CONTEXT_MESSAGES = 6;
@@ -125,6 +126,10 @@
 
     if (event.data && event.data.type === "ASK_ANCHOR_CLOSE_PANEL") {
       closePanel();
+    }
+
+    if (event.data && event.data.type === "ASK_ANCHOR_HIDE_PANEL") {
+      hidePanel();
     }
 
     if (event.data && event.data.type === "ASK_ANCHOR_RETURN_TO_SOURCE") {
@@ -255,12 +260,51 @@
     }
 
     panelFrame.hidden = false;
+    hideRestoreButton();
     postPanelState(state);
   }
 
   function closePanel() {
     if (panelFrame) {
       panelFrame.hidden = true;
+    }
+
+    hideRestoreButton();
+  }
+
+  function hidePanel() {
+    if (panelFrame) {
+      panelFrame.hidden = true;
+    }
+
+    showRestoreButton();
+  }
+
+  function showRestoreButton() {
+    let button = document.getElementById(RESTORE_BUTTON_ID);
+    if (!button) {
+      button = document.createElement("button");
+      button.id = RESTORE_BUTTON_ID;
+      button.type = "button";
+      button.textContent = "AskAnchor";
+      button.title = "显示 AskAnchor";
+      button.addEventListener("click", () => {
+        if (panelFrame) {
+          panelFrame.hidden = false;
+        }
+
+        hideRestoreButton();
+      });
+      document.documentElement.appendChild(button);
+    }
+
+    button.hidden = false;
+  }
+
+  function hideRestoreButton() {
+    const button = document.getElementById(RESTORE_BUTTON_ID);
+    if (button) {
+      button.hidden = true;
     }
   }
 

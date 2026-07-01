@@ -16,6 +16,29 @@
   background: #115e59;
 }
 
+#ask-anchor-restore-button {
+  position: fixed;
+  z-index: 2147483645;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  min-height: 40px;
+  border: 1px solid rgba(15, 118, 110, 0.32);
+  border-right: 0;
+  border-radius: 8px 0 0 8px;
+  background: #ffffff;
+  color: #0f766e;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+  cursor: pointer;
+  font: 700 12px/1 Arial, "Microsoft YaHei", sans-serif;
+  padding: 8px 10px;
+  writing-mode: vertical-rl;
+}
+
+#ask-anchor-restore-button:hover {
+  background: #ecfdf5;
+}
+
 #ask-anchor-panel-frame {
   position: fixed;
   z-index: 2147483645;
@@ -80,6 +103,12 @@
 .ask-anchor-panel__footer {
   border-top: 1px solid #e5e7eb;
   border-bottom: 0;
+}
+
+.ask-anchor-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .ask-anchor-icon-button {
