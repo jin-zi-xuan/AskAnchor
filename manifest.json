@@ -1,0 +1,71 @@
+{
+  "manifest_version": 3,
+  "name": "AskAnchor",
+  "version": "0.1.0",
+  "description": "Explain selected AI response text on popular AI chat websites with context-aware side panel anchors.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://gemini.google.com/*",
+    "https://claude.ai/*",
+    "https://www.perplexity.ai/*",
+    "https://perplexity.ai/*",
+    "https://poe.com/*",
+    "https://copilot.microsoft.com/*",
+    "https://chat.deepseek.com/*",
+    "https://kimi.moonshot.cn/*",
+    "https://www.doubao.com/*",
+    "https://doubao.com/*",
+    "https://tongyi.aliyun.com/*",
+    "https://yiyan.baidu.com/*",
+    "https://api.example.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*",
+        "https://www.perplexity.ai/*",
+        "https://perplexity.ai/*",
+        "https://poe.com/*",
+        "https://copilot.microsoft.com/*",
+        "https://chat.deepseek.com/*",
+        "https://kimi.moonshot.cn/*",
+        "https://www.doubao.com/*",
+        "https://doubao.com/*",
+        "https://tongyi.aliyun.com/*",
+        "https://yiyan.baidu.com/*"
+      ],
+      "js": ["contentScript.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["panel.html", "panel.js", "styles.css"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*",
+        "https://www.perplexity.ai/*",
+        "https://perplexity.ai/*",
+        "https://poe.com/*",
+        "https://copilot.microsoft.com/*",
+        "https://chat.deepseek.com/*",
+        "https://kimi.moonshot.cn/*",
+        "https://www.doubao.com/*",
+        "https://doubao.com/*",
+        "https://tongyi.aliyun.com/*",
+        "https://yiyan.baidu.com/*"
+      ]
+    }
+  ]
+}

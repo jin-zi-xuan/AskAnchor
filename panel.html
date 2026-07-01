@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AskAnchor Panel</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="ask-anchor-panel-body">
+    <main class="ask-anchor-panel">
+      <header class="ask-anchor-panel__header">
+        <strong>AskAnchor</strong>
+        <button id="ask-anchor-close" class="ask-anchor-icon-button" type="button" aria-label="关闭">×</button>
+      </header>
+
+      <section class="ask-anchor-section">
+        <h2>选中文本</h2>
+        <div id="ask-anchor-selected" class="ask-anchor-text-block"></div>
+      </section>
+
+      <section class="ask-anchor-section ask-anchor-section--grow">
+        <h2>解释结果</h2>
+        <div id="ask-anchor-result" class="ask-anchor-result"></div>
+      </section>
+
+      <footer class="ask-anchor-panel__footer">
+        <button id="ask-anchor-return" class="ask-anchor-primary-button" type="button">返回原位置</button>
+      </footer>
+    </main>
+
+    <script src="panel.js"></script>
+  </body>
+</html>
