@@ -102,6 +102,8 @@
   let currentSelection = null;
   let lastValidSelection = null;
   let anchorState = null;
+  let activeHistoryId = null;
+  let explanationHistory = [];
   let panelFrame = null;
   let selectionTimer = null;
 
@@ -125,6 +127,8 @@
     const isAskAnchorPanelMessage = [
       "ASK_ANCHOR_CLOSE_PANEL",
       "ASK_ANCHOR_HIDE_PANEL",
+      "ASK_ANCHOR_SELECT_HISTORY",
+      "ASK_ANCHOR_CLEAR_HISTORY",
       "ASK_ANCHOR_RETURN_TO_SOURCE"
     ].includes(type);
 
@@ -138,6 +142,14 @@
 
     if (type === "ASK_ANCHOR_HIDE_PANEL") {
       hidePanel();
+    }
+
+    if (type === "ASK_ANCHOR_SELECT_HISTORY") {
+      selectHistoryEntry(event.data.id);
+    }
+
+    if (type === "ASK_ANCHOR_CLEAR_HISTORY") {
+      clearHistory();
     }
 
     if (type === "ASK_ANCHOR_RETURN_TO_SOURCE") {
@@ -232,6 +244,7 @@
       scrollY: window.scrollY,
       text: selectedText
     };
+    activeHistoryId = null;
 
     hideExplainButton();
     openPanel({
@@ -252,14 +265,26 @@
       }
 
       postPanelState({
+        activeHistoryId: addHistoryEntry({
+          selectedText,
+          explanation: response.explanation,
+          anchor: anchorState
+        }),
         selectedText,
         explanation: response.explanation,
         loading: false
       });
     } catch (error) {
+      const explanation = `\u89e3\u91ca\u751f\u6210\u5931\u8d25\uff1a${error.message}`;
       postPanelState({
+        activeHistoryId: addHistoryEntry({
+          selectedText,
+          explanation,
+          anchor: anchorState,
+          error: true
+        }),
         selectedText,
-        explanation: `\u89e3\u91ca\u751f\u6210\u5931\u8d25\uff1a${error.message}`,
+        explanation,
         loading: false,
         error: true
       });
@@ -336,8 +361,58 @@
 
     panelFrame.contentWindow.postMessage({
       type: "ASK_ANCHOR_PANEL_STATE",
+      history: serializeHistory(),
       ...state
     }, "*");
+  }
+
+  function addHistoryEntry({ selectedText, explanation, anchor, error = false }) {
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    explanationHistory.unshift({
+      id,
+      selectedText,
+      explanation,
+      anchor,
+      error,
+      createdAt: new Date().toISOString()
+    });
+    explanationHistory = explanationHistory.slice(0, 30);
+    activeHistoryId = id;
+    return id;
+  }
+
+  function selectHistoryEntry(id) {
+    const entry = explanationHistory.find((item) => item.id === id);
+    if (!entry) {
+      return;
+    }
+
+    anchorState = entry.anchor;
+    activeHistoryId = entry.id;
+    openPanel({
+      activeHistoryId: entry.id,
+      selectedText: entry.selectedText,
+      explanation: entry.explanation,
+      loading: false,
+      error: entry.error
+    });
+  }
+
+  function clearHistory() {
+    explanationHistory = [];
+    activeHistoryId = null;
+    postPanelState({ activeHistoryId: null });
+  }
+
+  function serializeHistory() {
+    return explanationHistory.map((entry) => ({
+      id: entry.id,
+      selectedText: entry.selectedText,
+      explanation: entry.explanation,
+      error: entry.error,
+      createdAt: entry.createdAt,
+      active: entry.id === activeHistoryId
+    }));
   }
 
   function returnToSource() {

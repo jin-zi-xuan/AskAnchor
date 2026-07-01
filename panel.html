@@ -16,14 +16,29 @@
         </div>
       </header>
 
-      <section class="ask-anchor-section">
-        <h2>&#36873;&#20013;&#25991;&#26412;</h2>
-        <div id="ask-anchor-selected" class="ask-anchor-text-block"></div>
+      <nav class="ask-anchor-tabs" aria-label="AskAnchor views">
+        <button id="ask-anchor-tab-current" class="ask-anchor-tab is-active" type="button">&#24403;&#21069;&#35299;&#37322;</button>
+        <button id="ask-anchor-tab-history" class="ask-anchor-tab" type="button">&#21382;&#21490;&#35760;&#24405;</button>
+      </nav>
+
+      <section id="ask-anchor-current-view" class="ask-anchor-view">
+        <section class="ask-anchor-section">
+          <h2>&#36873;&#20013;&#25991;&#26412;</h2>
+          <div id="ask-anchor-selected" class="ask-anchor-text-block"></div>
+        </section>
+
+        <section class="ask-anchor-section ask-anchor-section--grow">
+          <h2>&#35299;&#37322;&#32467;&#26524;</h2>
+          <div id="ask-anchor-result" class="ask-anchor-result"></div>
+        </section>
       </section>
 
-      <section class="ask-anchor-section ask-anchor-section--grow">
-        <h2>&#35299;&#37322;&#32467;&#26524;</h2>
-        <div id="ask-anchor-result" class="ask-anchor-result"></div>
+      <section id="ask-anchor-history-view" class="ask-anchor-view" hidden>
+        <div class="ask-anchor-history-header">
+          <h2>&#21382;&#21490;&#35760;&#24405;</h2>
+          <button id="ask-anchor-clear-history" class="ask-anchor-text-button" type="button">&#28165;&#31354;</button>
+        </div>
+        <div id="ask-anchor-history-list" class="ask-anchor-history-list"></div>
       </section>
 
       <footer class="ask-anchor-panel__footer">

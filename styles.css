@@ -90,6 +90,17 @@
   min-height: 0;
 }
 
+.ask-anchor-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ask-anchor-view[hidden] {
+  display: none !important;
+}
+
 .ask-anchor-panel__header,
 .ask-anchor-panel__footer {
   display: flex;
@@ -109,6 +120,32 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.ask-anchor-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.ask-anchor-tab {
+  min-height: 38px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: #ffffff;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ask-anchor-tab.is-active {
+  border-bottom-color: #0f766e;
+  color: #0f766e;
+}
+
+.ask-anchor-tab:hover {
+  background: #f8fafc;
 }
 
 .ask-anchor-icon-button {
@@ -154,11 +191,70 @@
   overflow: auto;
 }
 
-.ask-anchor-section h2 {
+.ask-anchor-section h2,
+.ask-anchor-history-header h2 {
   margin: 0 0 8px;
   color: #475569;
   font-size: 12px;
   font-weight: 700;
+}
+
+.ask-anchor-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 14px 8px;
+}
+
+.ask-anchor-history-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 14px 14px;
+}
+
+.ask-anchor-history-item {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin: 0 0 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #172033;
+  cursor: pointer;
+  padding: 10px;
+  text-align: left;
+}
+
+.ask-anchor-history-item:hover,
+.ask-anchor-history-item.is-active {
+  border-color: rgba(15, 118, 110, 0.45);
+  background: #ecfdf5;
+}
+
+.ask-anchor-history-time {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ask-anchor-history-text {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.ask-anchor-history-empty {
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #64748b;
+  padding: 18px 12px;
+  text-align: center;
 }
 
 .ask-anchor-text-block,
