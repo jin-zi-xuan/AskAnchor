@@ -100,6 +100,7 @@
 
   const activeAdapter = getActiveAdapter();
   let currentSelection = null;
+  let lastValidSelection = null;
   let anchorState = null;
   let panelFrame = null;
   let selectionTimer = null;
@@ -168,6 +169,7 @@
       messageElement,
       rect: getRangeRect(range)
     };
+    lastValidSelection = currentSelection;
 
     showExplainButton(currentSelection.rect);
   }
@@ -183,7 +185,8 @@
       button.id = BUTTON_ID;
       button.type = "button";
       button.textContent = "\u89e3\u91ca\u8fd9\u4e00\u6bb5";
-      button.addEventListener("mousedown", (event) => event.preventDefault());
+      button.addEventListener("pointerdown", keepSelectionForButton);
+      button.addEventListener("mousedown", keepSelectionForButton);
       button.addEventListener("click", handleExplainClick);
       document.documentElement.appendChild(button);
     }
@@ -202,23 +205,30 @@
     }
   }
 
+  function keepSelectionForButton(event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   async function handleExplainClick(event) {
     event.preventDefault();
+    event.stopPropagation();
 
-    if (!currentSelection) {
+    const selectionSnapshot = currentSelection || lastValidSelection;
+    if (!selectionSnapshot) {
       return;
     }
 
-    const selectedText = currentSelection.text;
-    const sourceRange = currentSelection.range.cloneRange();
+    const selectedText = selectionSnapshot.text;
+    const sourceRange = selectionSnapshot.range.cloneRange();
     const marker = createSelectionMarker(sourceRange);
-    const context = extractConversationContext(currentSelection.messageElement);
+    const context = extractConversationContext(selectionSnapshot.messageElement);
 
     anchorState = {
-      element: currentSelection.messageElement,
+      element: selectionSnapshot.messageElement,
       marker,
       range: sourceRange,
-      rect: currentSelection.rect,
+      rect: selectionSnapshot.rect,
       scrollY: window.scrollY,
       text: selectedText
     };
