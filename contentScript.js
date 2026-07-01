@@ -105,6 +105,8 @@
   let currentSelection = null;
   let lastValidSelection = null;
   let anchors = [];
+  let pendingFollowUp = null;
+  let pendingFollowUpTimer = null;
   let selectionTimer = null;
 
   document.addEventListener("selectionchange", () => {
@@ -120,6 +122,12 @@
     }
 
     handleSelectionChange();
+  });
+
+  const conversationObserver = new MutationObserver(schedulePendingFollowUpCheck);
+  conversationObserver.observe(document.documentElement, {
+    childList: true,
+    subtree: true
   });
 
   function handleSelectionChange() {
@@ -205,6 +213,7 @@
       element: selectionSnapshot.messageElement,
       scrollY: window.scrollY
     });
+    const knownUserNodes = new Set(collectUserMessageElements());
     const prompt = buildFollowUpPrompt(selectionSnapshot.text, extractConversationContext(selectionSnapshot.messageElement));
     const filled = await fillCurrentAiInput(prompt);
 
@@ -212,6 +221,12 @@
     renderAnchorDock();
 
     if (filled) {
+      watchForSentFollowUp({
+        anchor,
+        prompt,
+        selectedText: selectionSnapshot.text,
+        knownUserNodes
+      });
       showToast(`\u5df2\u751f\u6210\u951a\u70b9\u300c${anchor.name}\u300d\uff0c\u5e76\u586b\u5165\u8ffd\u95ee`);
       return;
     }
@@ -267,7 +282,8 @@
 
     const button = dock.querySelector(".ask-anchor-dock-button");
     const list = dock.querySelector(`#${LIST_ID}`);
-    button.textContent = `\u951a\u70b9 ${anchors.length}`;
+    button.textContent = "AskAnchor";
+    button.title = `AskAnchor - ${anchors.length} \u4e2a\u951a\u70b9`;
     list.innerHTML = "";
 
     anchors.forEach((anchor, index) => {
@@ -352,6 +368,70 @@
     }
 
     window.scrollTo({ top: anchor.scrollY, behavior: "smooth" });
+  }
+
+  function watchForSentFollowUp({ anchor, prompt, selectedText, knownUserNodes }) {
+    pendingFollowUp = {
+      anchorId: anchor.id,
+      prompt,
+      selectedText,
+      knownUserNodes,
+      createdAt: Date.now()
+    };
+    schedulePendingFollowUpCheck();
+  }
+
+  function schedulePendingFollowUpCheck() {
+    if (!pendingFollowUp || pendingFollowUpTimer) {
+      return;
+    }
+
+    pendingFollowUpTimer = window.setTimeout(() => {
+      pendingFollowUpTimer = null;
+      checkPendingFollowUp();
+    }, 180);
+  }
+
+  function checkPendingFollowUp() {
+    if (!pendingFollowUp) {
+      return;
+    }
+
+    if (Date.now() - pendingFollowUp.createdAt > 90 * 1000) {
+      pendingFollowUp = null;
+      return;
+    }
+
+    const sentQuestion = findSentFollowUpElement(pendingFollowUp);
+    if (!sentQuestion) {
+      return;
+    }
+
+    sentQuestion.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    brieflyHighlight(sentQuestion);
+    pendingFollowUp = null;
+  }
+
+  function findSentFollowUpElement(followUp) {
+    return collectUserMessageElements()
+      .filter((node) => !followUp.knownUserNodes.has(node))
+      .find((node) => isMatchingFollowUpText(node.innerText || node.textContent || "", followUp));
+  }
+
+  function isMatchingFollowUpText(text, followUp) {
+    const normalizedText = normalizeComparableText(text);
+    if (!normalizedText) {
+      return false;
+    }
+
+    const selectedText = normalizeComparableText(followUp.selectedText);
+    const selectedFragment = selectedText.slice(0, Math.min(80, selectedText.length));
+    const promptHead = normalizeComparableText(followUp.prompt).slice(0, 80);
+
+    return Boolean(
+      selectedFragment && normalizedText.includes(selectedFragment)
+      || promptHead && normalizedText.includes(promptHead)
+    );
   }
 
   function buildFollowUpPrompt(selectedText, context) {
@@ -628,6 +708,32 @@
     });
   }
 
+  function collectUserMessageElements() {
+    const selectors = [
+      ...activeAdapter.userSelectors,
+      "[data-message-author-role='user']",
+      "user-query",
+      "[data-content='user-message']",
+      "[data-testid*='user']",
+      "[data-testid*='query']",
+      "[class*='user']",
+      "[class*='human']",
+      "[class*='question']",
+      "[class*='query']"
+    ];
+
+    return uniqueElements(selectors.flatMap((selector) => {
+      try {
+        return Array.from(document.querySelectorAll(selector));
+      } catch (error) {
+        console.debug("[AskAnchor] Ignored invalid user selector:", selector, error);
+        return [];
+      }
+    }))
+      .filter((node) => !isInsideEditable(node))
+      .filter((node) => cleanText(node.innerText || node.textContent || "").length > 1);
+  }
+
   function collectMessages(adapter) {
     const selectors = adapter.messageSelectors || [];
     const nodes = uniqueElements(selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))));
@@ -755,6 +861,13 @@
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 3000);
+  }
+
+  function normalizeComparableText(text) {
+    return String(text || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 5000);
   }
 
   function delay(ms) {
