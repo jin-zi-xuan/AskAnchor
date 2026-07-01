@@ -35,6 +35,21 @@
   transition: outline-color 160ms ease;
 }
 
+.ask-anchor-selection-marker {
+  display: inline-block !important;
+  width: 0 !important;
+  height: 1em !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  scroll-margin-top: 40vh !important;
+  vertical-align: baseline !important;
+}
+
+.ask-anchor-selection-marker.ask-anchor-highlight {
+  outline: 3px solid rgba(20, 184, 166, 0.75) !important;
+  outline-offset: 4px !important;
+}
+
 .ask-anchor-panel-body {
   width: 100%;
   height: 100vh;

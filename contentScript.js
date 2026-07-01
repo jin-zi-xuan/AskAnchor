@@ -2,6 +2,7 @@
   const BUTTON_ID = "ask-anchor-explain-button";
   const PANEL_ID = "ask-anchor-panel-frame";
   const HIGHLIGHT_CLASS = "ask-anchor-highlight";
+  const MARKER_CLASS = "ask-anchor-selection-marker";
   const MAX_CONTEXT_MESSAGES = 6;
   const MIN_SELECTION_LENGTH = 2;
 
@@ -106,6 +107,7 @@
     clearTimeout(selectionTimer);
     selectionTimer = setTimeout(handleSelectionChange, 120);
   });
+
   document.addEventListener("mouseup", handleSelectionChange);
   document.addEventListener("keyup", (event) => {
     if (event.key === "Escape") {
@@ -168,7 +170,7 @@
       button = document.createElement("button");
       button.id = BUTTON_ID;
       button.type = "button";
-      button.textContent = "解释这一段";
+      button.textContent = "\u89e3\u91ca\u8fd9\u4e00\u6bb5";
       button.addEventListener("mousedown", (event) => event.preventDefault());
       button.addEventListener("click", handleExplainClick);
       document.documentElement.appendChild(button);
@@ -196,9 +198,15 @@
     }
 
     const selectedText = currentSelection.text;
+    const sourceRange = currentSelection.range.cloneRange();
+    const marker = createSelectionMarker(sourceRange);
     const context = extractConversationContext(currentSelection.messageElement);
+
     anchorState = {
       element: currentSelection.messageElement,
+      marker,
+      range: sourceRange,
+      rect: currentSelection.rect,
       scrollY: window.scrollY,
       text: selectedText
     };
@@ -206,7 +214,7 @@
     hideExplainButton();
     openPanel({
       selectedText,
-      explanation: "正在生成解释...",
+      explanation: "\u6b63\u5728\u751f\u6210\u89e3\u91ca...",
       loading: true
     });
 
@@ -218,7 +226,7 @@
       });
 
       if (!response || !response.ok) {
-        throw new Error(response && response.error ? response.error : "解释生成失败");
+        throw new Error(response && response.error ? response.error : "\u89e3\u91ca\u751f\u6210\u5931\u8d25");
       }
 
       postPanelState({
@@ -229,7 +237,7 @@
     } catch (error) {
       postPanelState({
         selectedText,
-        explanation: `解释生成失败：${error.message}`,
+        explanation: `\u89e3\u91ca\u751f\u6210\u5931\u8d25\uff1a${error.message}`,
         loading: false,
         error: true
       });
@@ -272,15 +280,81 @@
       return;
     }
 
+    const marker = anchorState.marker && document.contains(anchorState.marker)
+      ? anchorState.marker
+      : null;
     const target = anchorState.element && document.contains(anchorState.element)
       ? anchorState.element
       : null;
 
-    if (target) {
+    if (marker) {
+      marker.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      restoreSelectionHighlight(anchorState.range);
+      brieflyHighlight(marker);
+    } else if (scrollToSavedRange(anchorState.range)) {
+      restoreSelectionHighlight(anchorState.range);
+    } else if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "center" });
       brieflyHighlight(target);
     } else {
       window.scrollTo({ top: anchorState.scrollY, behavior: "smooth" });
+    }
+  }
+
+  function createSelectionMarker(range) {
+    removeExistingMarkers();
+
+    const marker = document.createElement("span");
+    marker.className = MARKER_CLASS;
+    marker.setAttribute("aria-hidden", "true");
+    marker.dataset.askAnchor = "selection-marker";
+
+    try {
+      const markerRange = range.cloneRange();
+      markerRange.collapse(true);
+      markerRange.insertNode(marker);
+      return marker;
+    } catch (error) {
+      console.debug("[AskAnchor] Failed to create selection marker:", error);
+      return null;
+    }
+  }
+
+  function removeExistingMarkers() {
+    document.querySelectorAll(`.${MARKER_CLASS}`).forEach((marker) => marker.remove());
+  }
+
+  function scrollToSavedRange(range) {
+    if (!range) {
+      return false;
+    }
+
+    try {
+      const rect = getRangeRect(range);
+      if (!rect) {
+        return false;
+      }
+
+      const top = rect.top + window.scrollY - window.innerHeight * 0.35;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      return true;
+    } catch (error) {
+      console.debug("[AskAnchor] Failed to scroll to saved range:", error);
+      return false;
+    }
+  }
+
+  function restoreSelectionHighlight(range) {
+    if (!range) {
+      return;
+    }
+
+    try {
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } catch (error) {
+      console.debug("[AskAnchor] Failed to restore selection:", error);
     }
   }
 
