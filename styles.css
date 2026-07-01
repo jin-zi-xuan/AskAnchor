@@ -3,9 +3,9 @@
   z-index: 2147483646;
   border: 1px solid rgba(255, 255, 255, 0.42);
   border-radius: 999px;
-  background: rgba(20, 184, 166, 0.92);
+  background: rgba(17, 24, 39, 0.92);
   color: #ffffff;
-  box-shadow: 0 14px 34px rgba(15, 118, 110, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.22);
   cursor: pointer;
   font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
   min-height: 36px;
@@ -16,7 +16,7 @@
 }
 
 #ask-anchor-explain-button:hover {
-  background: rgba(13, 148, 136, 0.96);
+  background: rgba(31, 41, 55, 0.96);
   transform: translateY(-1px);
 }
 
@@ -27,11 +27,11 @@
   top: 50%;
   transform: translateY(-50%);
   min-height: 40px;
-  border: 1px solid rgba(15, 118, 110, 0.22);
+  border: 1px solid rgba(71, 85, 105, 0.22);
   border-right: 0;
   border-radius: 14px 0 0 14px;
   background: rgba(255, 255, 255, 0.82);
-  color: #0f766e;
+  color: #111827;
   box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
   cursor: pointer;
   font: 800 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
@@ -42,7 +42,7 @@
 }
 
 #ask-anchor-restore-button:hover {
-  background: rgba(236, 253, 245, 0.94);
+  background: rgba(248, 250, 252, 0.96);
 }
 
 #ask-anchor-panel-frame {
@@ -61,7 +61,7 @@
 }
 
 .ask-anchor-highlight {
-  outline: 3px solid rgba(20, 184, 166, 0.7) !important;
+  outline: 3px solid rgba(100, 116, 139, 0.72) !important;
   outline-offset: 4px !important;
   transition: outline-color 160ms ease;
 }
@@ -77,7 +77,7 @@
 }
 
 .ask-anchor-selection-marker.ask-anchor-highlight {
-  outline: 3px solid rgba(20, 184, 166, 0.75) !important;
+  outline: 3px solid rgba(100, 116, 139, 0.78) !important;
   outline-offset: 4px !important;
 }
 
@@ -87,7 +87,7 @@
   margin: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 20% 0%, rgba(20, 184, 166, 0.12), transparent 34%),
+    radial-gradient(circle at 20% 0%, rgba(148, 163, 184, 0.22), transparent 34%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(241, 245, 249, 0.9));
   color: #111827;
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
@@ -271,8 +271,8 @@
 
 .ask-anchor-history-item:hover,
 .ask-anchor-history-item.is-active {
-  border-color: rgba(15, 118, 110, 0.45);
-  background: rgba(236, 253, 245, 0.88);
+  border-color: rgba(71, 85, 105, 0.42);
+  background: rgba(248, 250, 252, 0.9);
   box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
   transform: translateY(-1px);
 }
@@ -337,19 +337,19 @@
 .ask-anchor-primary-button {
   width: 100%;
   min-height: 42px;
-  border: 1px solid rgba(15, 118, 110, 0.18);
+  border: 1px solid rgba(15, 23, 42, 0.16);
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.94);
+  background: rgba(17, 24, 39, 0.94);
   color: #ffffff;
   cursor: pointer;
   font-weight: 700;
-  box-shadow: 0 14px 30px rgba(15, 118, 110, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
 
 .ask-anchor-primary-button:hover {
-  background: rgba(13, 148, 136, 0.96);
-  box-shadow: 0 18px 38px rgba(15, 118, 110, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  background: rgba(31, 41, 55, 0.98);
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   transform: translateY(-1px);
 }
 
