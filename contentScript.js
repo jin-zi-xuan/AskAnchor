@@ -5,7 +5,8 @@
   const TOAST_ID = "ask-anchor-toast";
   const HIGHLIGHT_CLASS = "ask-anchor-highlight";
   const MARKER_CLASS = "ask-anchor-selection-marker";
-  const MAX_CONTEXT_MESSAGES = 6;
+  const MAX_CONTEXT_MESSAGES = 3;
+  const MAX_CONTEXT_TEXT_LENGTH = 900;
   const MIN_SELECTION_LENGTH = 2;
   const MAX_ANCHORS = 30;
   const ANCHOR_NAME_LENGTH = 28;
@@ -107,6 +108,7 @@
   let anchors = [];
   let pendingFollowUp = null;
   let pendingFollowUpTimer = null;
+  let pendingFollowUpPollTimer = null;
   let selectionTimer = null;
 
   document.addEventListener("selectionchange", () => {
@@ -123,6 +125,8 @@
 
     handleSelectionChange();
   });
+  document.addEventListener("click", handlePossibleSendClick, true);
+  document.addEventListener("keydown", handlePossibleSendKeydown, true);
 
   const conversationObserver = new MutationObserver(schedulePendingFollowUpCheck);
   conversationObserver.observe(document.documentElement, {
@@ -213,7 +217,9 @@
       element: selectionSnapshot.messageElement,
       scrollY: window.scrollY
     });
-    const knownUserNodes = new Set(collectUserMessageElements());
+    const knownUserElements = collectUserMessageElements();
+    const knownUserNodes = new Set(knownUserElements);
+    const knownUserTexts = new Set(knownUserElements.map((node) => normalizeComparableText(node.innerText || node.textContent || "")));
     const prompt = buildFollowUpPrompt(selectionSnapshot.text, extractConversationContext(selectionSnapshot.messageElement));
     const filled = await fillCurrentAiInput(prompt);
 
@@ -225,7 +231,8 @@
         anchor,
         prompt,
         selectedText: selectionSnapshot.text,
-        knownUserNodes
+        knownUserNodes,
+        knownUserTexts
       });
       showToast(`\u5df2\u751f\u6210\u951a\u70b9\u300c${anchor.name}\u300d\uff0c\u5e76\u586b\u5165\u8ffd\u95ee`);
       return;
@@ -370,19 +377,21 @@
     window.scrollTo({ top: anchor.scrollY, behavior: "smooth" });
   }
 
-  function watchForSentFollowUp({ anchor, prompt, selectedText, knownUserNodes }) {
+  function watchForSentFollowUp({ anchor, prompt, selectedText, knownUserNodes, knownUserTexts }) {
     pendingFollowUp = {
       anchorId: anchor.id,
       prompt,
       selectedText,
       knownUserNodes,
+      knownUserTexts,
+      editor: findPromptEditor(),
+      waitingForSend: true,
       createdAt: Date.now()
     };
-    schedulePendingFollowUpCheck();
   }
 
   function schedulePendingFollowUpCheck() {
-    if (!pendingFollowUp || pendingFollowUpTimer) {
+    if (!pendingFollowUp || pendingFollowUp.waitingForSend || pendingFollowUpTimer) {
       return;
     }
 
@@ -397,8 +406,9 @@
       return;
     }
 
-    if (Date.now() - pendingFollowUp.createdAt > 90 * 1000) {
-      pendingFollowUp = null;
+    const searchStartedAt = pendingFollowUp.sentAt || pendingFollowUp.createdAt;
+    if (Date.now() - searchStartedAt > 90 * 1000) {
+      clearPendingFollowUp();
       return;
     }
 
@@ -409,13 +419,29 @@
 
     sentQuestion.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
     brieflyHighlight(sentQuestion);
-    pendingFollowUp = null;
+    clearPendingFollowUp();
   }
 
   function findSentFollowUpElement(followUp) {
-    return collectUserMessageElements()
+    const userMessages = collectUserMessageElements();
+    const matchingNode = userMessages
       .filter((node) => !followUp.knownUserNodes.has(node))
       .find((node) => isMatchingFollowUpText(node.innerText || node.textContent || "", followUp));
+
+    if (matchingNode) {
+      return matchingNode;
+    }
+
+    const newMessages = userMessages.filter((node) => {
+      const text = normalizeComparableText(node.innerText || node.textContent || "");
+      return !followUp.knownUserNodes.has(node) && !followUp.knownUserTexts.has(text);
+    });
+
+    if (newMessages.length > 0 && isPromptEditorCleared(followUp.editor)) {
+      return newMessages[newMessages.length - 1];
+    }
+
+    return null;
   }
 
   function isMatchingFollowUpText(text, followUp) {
@@ -432,6 +458,98 @@
       selectedFragment && normalizedText.includes(selectedFragment)
       || promptHead && normalizedText.includes(promptHead)
     );
+  }
+
+  function startPendingFollowUpPolling() {
+    window.clearInterval(pendingFollowUpPollTimer);
+    pendingFollowUpPollTimer = window.setInterval(() => {
+      if (!pendingFollowUp) {
+        window.clearInterval(pendingFollowUpPollTimer);
+        pendingFollowUpPollTimer = null;
+        return;
+      }
+
+      checkPendingFollowUp();
+    }, 700);
+  }
+
+  function markPendingFollowUpSent() {
+    if (!pendingFollowUp || !pendingFollowUp.waitingForSend) {
+      return;
+    }
+
+    pendingFollowUp.waitingForSend = false;
+    pendingFollowUp.sentAt = Date.now();
+    schedulePendingFollowUpCheck();
+    startPendingFollowUpPolling();
+  }
+
+  function handlePossibleSendClick(event) {
+    if (!pendingFollowUp || !pendingFollowUp.waitingForSend) {
+      return;
+    }
+
+    const button = event.target && event.target.closest ? event.target.closest("button, [role='button']") : null;
+    if (button && isSendControl(button)) {
+      window.setTimeout(markPendingFollowUpSent, 120);
+    }
+  }
+
+  function handlePossibleSendKeydown(event) {
+    if (!pendingFollowUp || !pendingFollowUp.waitingForSend) {
+      return;
+    }
+
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      const editor = pendingFollowUp.editor && document.contains(pendingFollowUp.editor)
+        ? pendingFollowUp.editor
+        : findPromptEditor();
+
+      if (editor && (event.target === editor || editor.contains(event.target))) {
+        window.setTimeout(markPendingFollowUpSent, 120);
+      }
+    }
+  }
+
+  function isSendControl(element) {
+    const haystack = [
+      element.getAttribute("aria-label"),
+      element.getAttribute("data-testid"),
+      element.getAttribute("title"),
+      element.textContent,
+      element.className,
+      element.id
+    ].join(" ").toLowerCase();
+
+    return /send|submit|arrow-up|paper-airplane|发送|送出|提交/.test(haystack);
+  }
+
+  function clearPendingFollowUp() {
+    pendingFollowUp = null;
+    window.clearTimeout(pendingFollowUpTimer);
+    window.clearInterval(pendingFollowUpPollTimer);
+    pendingFollowUpTimer = null;
+    pendingFollowUpPollTimer = null;
+  }
+
+  function isPromptEditorCleared(editor) {
+    if (!editor || !document.contains(editor)) {
+      editor = findPromptEditor();
+    }
+
+    return normalizeComparableText(getEditorText(editor)).length < 2;
+  }
+
+  function getEditorText(editor) {
+    if (!editor) {
+      return "";
+    }
+
+    if (editor.tagName === "TEXTAREA" || editor.tagName === "INPUT") {
+      return editor.value || "";
+    }
+
+    return editor.innerText || editor.textContent || "";
   }
 
   function buildFollowUpPrompt(selectedText, context) {
@@ -632,10 +750,18 @@
 
     toast.textContent = message;
     toast.hidden = false;
+    toast.classList.remove("is-hiding");
+    toast.classList.add("is-visible");
     window.clearTimeout(showToast.timer);
+    window.clearTimeout(showToast.hideTimer);
     showToast.timer = window.setTimeout(() => {
+      toast.classList.add("is-hiding");
+      toast.classList.remove("is-visible");
+    }, 3600);
+    showToast.hideTimer = window.setTimeout(() => {
       toast.hidden = true;
-    }, 2400);
+      toast.classList.remove("is-hiding");
+    }, 4000);
   }
 
   function findAssistantMessageElement(node) {
@@ -860,7 +986,7 @@
     return String(text || "")
       .replace(/\s+/g, " ")
       .trim()
-      .slice(0, 3000);
+      .slice(0, MAX_CONTEXT_TEXT_LENGTH);
   }
 
   function normalizeComparableText(text) {
