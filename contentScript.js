@@ -2,6 +2,7 @@
   const BUTTON_ID = "ask-anchor-explain-button";
   const PANEL_ID = "ask-anchor-panel-frame";
   const RESTORE_BUTTON_ID = "ask-anchor-restore-button";
+  const TOAST_ID = "ask-anchor-toast";
   const HIGHLIGHT_CLASS = "ask-anchor-highlight";
   const MARKER_CLASS = "ask-anchor-selection-marker";
   const MAX_CONTEXT_MESSAGES = 6;
@@ -252,48 +253,7 @@
     activeHistoryId = null;
 
     hideExplainButton();
-    openPanel({
-      selectedText,
-      explanation: "\u6b63\u5728\u751f\u6210\u89e3\u91ca...",
-      loading: true
-    });
-
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: "ASK_ANCHOR_EXPLAIN",
-        selectedText,
-        context
-      });
-
-      if (!response || !response.ok) {
-        throw new Error(response && response.error ? response.error : "\u89e3\u91ca\u751f\u6210\u5931\u8d25");
-      }
-
-      postPanelState({
-        activeHistoryId: addHistoryEntry({
-          selectedText,
-          explanation: response.explanation,
-          anchor: anchorState
-        }),
-        selectedText,
-        explanation: response.explanation,
-        loading: false
-      });
-    } catch (error) {
-      const explanation = `\u89e3\u91ca\u751f\u6210\u5931\u8d25\uff1a${error.message}`;
-      postPanelState({
-        activeHistoryId: addHistoryEntry({
-          selectedText,
-          explanation,
-          anchor: anchorState,
-          error: true
-        }),
-        selectedText,
-        explanation,
-        loading: false,
-        error: true
-      });
-    }
+    await openExternalAi("chatgpt");
   }
 
   function openPanel(state) {
@@ -432,11 +392,29 @@
       postPanelState({
         externalStatus: `\u5df2\u590d\u5236 prompt\uff0c\u5e76\u6253\u5f00 ${providerName}\u5c0f\u7a97\u53e3\u3002\u5728\u8f93\u5165\u6846\u7c98\u8d34\u540e\u53d1\u9001\u5373\u53ef\u3002`
       });
+      showToast(`\u5df2\u590d\u5236 prompt\uff0c\u5e76\u6253\u5f00 ${providerName}`);
     } catch (error) {
       postPanelState({
         externalStatus: `\u6253\u5f00 ${providerName}\u5931\u8d25\uff1a${error.message}`
       });
+      showToast(`\u6253\u5f00 ${providerName}\u5931\u8d25`);
     }
+  }
+
+  function showToast(message) {
+    let toast = document.getElementById(TOAST_ID);
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = TOAST_ID;
+      document.documentElement.appendChild(toast);
+    }
+
+    toast.textContent = message;
+    toast.hidden = false;
+    window.clearTimeout(showToast.timer);
+    showToast.timer = window.setTimeout(() => {
+      toast.hidden = true;
+    }, 2400);
   }
 
   function buildExternalPrompt() {
