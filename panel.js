@@ -9,6 +9,8 @@ const currentView = document.getElementById("ask-anchor-current-view");
 const historyView = document.getElementById("ask-anchor-history-view");
 const historyList = document.getElementById("ask-anchor-history-list");
 const clearHistoryButton = document.getElementById("ask-anchor-clear-history");
+const externalStatusEl = document.getElementById("ask-anchor-external-status");
+const providerButtons = Array.from(document.querySelectorAll(".ask-anchor-provider-button"));
 
 let historyItems = [];
 let activeHistoryId = null;
@@ -28,6 +30,9 @@ window.addEventListener("message", (event) => {
   resultEl.textContent = data.explanation || "";
   resultEl.dataset.loading = data.loading ? "true" : "false";
   resultEl.dataset.error = data.error ? "true" : "false";
+  if (data.externalStatus) {
+    externalStatusEl.textContent = data.externalStatus;
+  }
   renderHistory();
 });
 
@@ -56,6 +61,16 @@ clearHistoryButton.addEventListener("click", () => {
   historyItems = [];
   activeHistoryId = null;
   renderHistory();
+});
+
+providerButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    externalStatusEl.textContent = "\u6b63\u5728\u590d\u5236 prompt \u5e76\u6253\u5f00\u5c0f\u7a97\u53e3...";
+    window.parent.postMessage({
+      type: "ASK_ANCHOR_OPEN_EXTERNAL_AI",
+      provider: button.dataset.provider
+    }, "*");
+  });
 });
 
 function setView(viewName) {

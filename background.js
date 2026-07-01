@@ -2,6 +2,20 @@ const USE_MOCK_RESPONSE = true;
 const EXAMPLE_ENDPOINT = "https://api.example.com/explain";
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message && message.type === "ASK_ANCHOR_OPEN_EXTERNAL_AI") {
+    openExternalAiWindow(message.provider)
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => {
+        console.error("[AskAnchor] Failed to open external AI window:", error);
+        sendResponse({
+          ok: false,
+          error: error && error.message ? error.message : "Failed to open external AI window."
+        });
+      });
+
+    return true;
+  }
+
   if (!message || message.type !== "ASK_ANCHOR_EXPLAIN") {
     return false;
   }
@@ -18,6 +32,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return true;
 });
+
+async function openExternalAiWindow(provider) {
+  const urls = {
+    chatgpt: "https://chatgpt.com/",
+    gemini: "https://gemini.google.com/app",
+    claude: "https://claude.ai/new"
+  };
+  const targetUrl = urls[provider] || urls.chatgpt;
+
+  return chrome.windows.create({
+    url: targetUrl,
+    type: "popup",
+    focused: true,
+    width: 520,
+    height: 760,
+    left: 900,
+    top: 80
+  });
+}
 
 /**
  * AI interface layer. The MVP returns deterministic mock content by default.

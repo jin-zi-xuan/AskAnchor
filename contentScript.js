@@ -129,6 +129,7 @@
       "ASK_ANCHOR_HIDE_PANEL",
       "ASK_ANCHOR_SELECT_HISTORY",
       "ASK_ANCHOR_CLEAR_HISTORY",
+      "ASK_ANCHOR_OPEN_EXTERNAL_AI",
       "ASK_ANCHOR_RETURN_TO_SOURCE"
     ].includes(type);
 
@@ -150,6 +151,10 @@
 
     if (type === "ASK_ANCHOR_CLEAR_HISTORY") {
       clearHistory();
+    }
+
+    if (type === "ASK_ANCHOR_OPEN_EXTERNAL_AI") {
+      openExternalAi(event.data.provider);
     }
 
     if (type === "ASK_ANCHOR_RETURN_TO_SOURCE") {
@@ -402,6 +407,75 @@
     explanationHistory = [];
     activeHistoryId = null;
     postPanelState({ activeHistoryId: null });
+  }
+
+  async function openExternalAi(provider) {
+    const prompt = buildExternalPrompt();
+    if (!prompt) {
+      postPanelState({ externalStatus: "\u8bf7\u5148\u9009\u4e2d\u4e00\u6bb5\u6587\u5b57\u3002" });
+      return;
+    }
+
+    const providerName = getProviderName(provider);
+
+    try {
+      await navigator.clipboard.writeText(prompt);
+      const response = await chrome.runtime.sendMessage({
+        type: "ASK_ANCHOR_OPEN_EXTERNAL_AI",
+        provider
+      });
+
+      if (!response || !response.ok) {
+        throw new Error(response && response.error ? response.error : "open failed");
+      }
+
+      postPanelState({
+        externalStatus: `\u5df2\u590d\u5236 prompt\uff0c\u5e76\u6253\u5f00 ${providerName}\u5c0f\u7a97\u53e3\u3002\u5728\u8f93\u5165\u6846\u7c98\u8d34\u540e\u53d1\u9001\u5373\u53ef\u3002`
+      });
+    } catch (error) {
+      postPanelState({
+        externalStatus: `\u6253\u5f00 ${providerName}\u5931\u8d25\uff1a${error.message}`
+      });
+    }
+  }
+
+  function buildExternalPrompt() {
+    const selectedText = anchorState && anchorState.text
+      ? anchorState.text
+      : lastValidSelection && lastValidSelection.text;
+    const context = anchorState && anchorState.element
+      ? extractConversationContext(anchorState.element)
+      : lastValidSelection
+        ? extractConversationContext(lastValidSelection.messageElement)
+        : [];
+
+    if (!selectedText) {
+      return "";
+    }
+
+    const contextText = context
+      .map((item) => `${item.role}: ${item.text}`)
+      .join("\n\n");
+
+    return [
+      "\u8bf7\u7ed3\u5408\u5bf9\u8bdd\u4e0a\u4e0b\u6587\uff0c\u7528\u4e2d\u6587\u89e3\u91ca\u6211\u9009\u4e2d\u7684\u8fd9\u6bb5 AI \u56de\u7b54\u3002",
+      "",
+      "\u3010\u5bf9\u8bdd\u4e0a\u4e0b\u6587\u3011",
+      contextText || "\u65e0",
+      "",
+      "\u3010\u9009\u4e2d\u6587\u672c\u3011",
+      selectedText,
+      "",
+      "\u8bf7\u8bf4\u660e\u5b83\u7684\u610f\u601d\u3001\u80cc\u540e\u903b\u8f91\u3001\u4e0e\u4e0a\u4e0b\u6587\u7684\u5173\u7cfb\uff0c\u5e76\u5c3d\u91cf\u7b80\u6d01\u3002"
+    ].join("\n");
+  }
+
+  function getProviderName(provider) {
+    return {
+      chatgpt: "ChatGPT",
+      gemini: "Gemini",
+      claude: "Claude"
+    }[provider] || "ChatGPT";
   }
 
   function serializeHistory() {
