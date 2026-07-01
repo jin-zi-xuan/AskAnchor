@@ -127,6 +127,23 @@
   background: #f3f4f6;
 }
 
+.ask-anchor-text-button {
+  min-width: 48px;
+  height: 30px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.ask-anchor-text-button:hover {
+  background: #f3f4f6;
+}
+
 .ask-anchor-section {
   padding: 14px;
 }

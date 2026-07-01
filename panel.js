@@ -10,7 +10,7 @@ window.addEventListener("message", (event) => {
     return;
   }
 
-  selectedEl.textContent = data.selectedText || "暂无选中文本";
+  selectedEl.textContent = data.selectedText || "\u6682\u65e0\u9009\u4e2d\u6587\u672c";
   resultEl.textContent = data.explanation || "";
   resultEl.dataset.loading = data.loading ? "true" : "false";
   resultEl.dataset.error = data.error ? "true" : "false";

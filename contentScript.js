@@ -120,19 +120,26 @@
   });
 
   window.addEventListener("message", (event) => {
-    if (event.source !== (panelFrame && panelFrame.contentWindow)) {
+    const type = event.data && event.data.type;
+    const isAskAnchorPanelMessage = [
+      "ASK_ANCHOR_CLOSE_PANEL",
+      "ASK_ANCHOR_HIDE_PANEL",
+      "ASK_ANCHOR_RETURN_TO_SOURCE"
+    ].includes(type);
+
+    if (!isAskAnchorPanelMessage) {
       return;
     }
 
-    if (event.data && event.data.type === "ASK_ANCHOR_CLOSE_PANEL") {
+    if (type === "ASK_ANCHOR_CLOSE_PANEL") {
       closePanel();
     }
 
-    if (event.data && event.data.type === "ASK_ANCHOR_HIDE_PANEL") {
+    if (type === "ASK_ANCHOR_HIDE_PANEL") {
       hidePanel();
     }
 
-    if (event.data && event.data.type === "ASK_ANCHOR_RETURN_TO_SOURCE") {
+    if (type === "ASK_ANCHOR_RETURN_TO_SOURCE") {
       returnToSource();
     }
   });
@@ -260,6 +267,7 @@
     }
 
     panelFrame.hidden = false;
+    panelFrame.style.display = "block";
     hideRestoreButton();
     postPanelState(state);
   }
@@ -267,6 +275,7 @@
   function closePanel() {
     if (panelFrame) {
       panelFrame.hidden = true;
+      panelFrame.style.display = "none";
     }
 
     hideRestoreButton();
@@ -275,6 +284,7 @@
   function hidePanel() {
     if (panelFrame) {
       panelFrame.hidden = true;
+      panelFrame.style.display = "none";
     }
 
     showRestoreButton();
@@ -287,10 +297,11 @@
       button.id = RESTORE_BUTTON_ID;
       button.type = "button";
       button.textContent = "AskAnchor";
-      button.title = "显示 AskAnchor";
+      button.title = "\u663e\u793a AskAnchor";
       button.addEventListener("click", () => {
         if (panelFrame) {
           panelFrame.hidden = false;
+          panelFrame.style.display = "block";
         }
 
         hideRestoreButton();
