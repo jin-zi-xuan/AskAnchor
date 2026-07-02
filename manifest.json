@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AskAnchor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Ask follow-up questions from selected AI response text and jump back to saved anchors.",
   "permissions": ["clipboardWrite"],
   "host_permissions": [
@@ -20,9 +20,6 @@
     "https://tongyi.aliyun.com/*",
     "https://yiyan.baidu.com/*"
   ],
-  "background": {
-    "service_worker": "background.js"
-  },
   "content_scripts": [
     {
       "matches": [
