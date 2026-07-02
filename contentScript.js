@@ -14,6 +14,7 @@
   const STORAGE_KEY_PREFIX = "ask-anchor:anchors:";
   const CAT_POSITION_STORAGE_KEY = "ask-anchor:cat-position";
   const CAT_IMAGE_URL = chrome.runtime.getURL("assets/askanchor-cat-perch.png");
+  const CAT_PEEK_IMAGE_URL = chrome.runtime.getURL("assets/askanchor-cat-peek-right.png");
 
   const PLATFORM_ADAPTERS = [
     {
@@ -754,6 +755,7 @@
     }
 
     dock.classList.toggle("is-tucked", catDockTucked);
+    updateCatImage(dock);
     if (catDockTucked) {
       dock.style.removeProperty("--ask-anchor-cat-left");
       dock.style.removeProperty("--ask-anchor-cat-right");
@@ -826,6 +828,18 @@
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${position.top}px`);
     dock.style.removeProperty("bottom");
+  }
+
+  function updateCatImage(dock) {
+    const catImage = dock.querySelector(".ask-anchor-cat-image");
+    if (!catImage) {
+      return;
+    }
+
+    const nextSrc = catDockTucked ? CAT_PEEK_IMAGE_URL : CAT_IMAGE_URL;
+    if (catImage.src !== nextSrc) {
+      catImage.src = nextSrc;
+    }
   }
 
   function loadCatDockPosition() {

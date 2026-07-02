@@ -48,7 +48,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["assets/askanchor-cat-perch.png"],
+      "resources": ["assets/askanchor-cat-perch.png", "assets/askanchor-cat-peek-right.png"],
       "matches": [
         "https://chatgpt.com/*",
         "https://chat.openai.com/*",

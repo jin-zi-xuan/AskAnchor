@@ -43,10 +43,11 @@
 
 #ask-anchor-anchor-dock.is-tucked {
   left: auto;
-  right: -24px;
+  right: -8px;
   top: auto;
-  bottom: 18px;
-  width: 76px;
+  bottom: 92px;
+  width: 98px;
+  min-width: 98px;
   justify-items: end;
   --ask-anchor-cat-shift: 0;
 }
@@ -146,13 +147,23 @@
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-dock-button {
   animation: none;
+  width: 98px;
+  height: 106px;
   transform: translateX(0);
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-image {
-  animation: ask-anchor-cat-ear-wiggle 7.8s ease-in-out infinite;
+  left: auto;
+  right: 0;
+  bottom: 0;
+  width: 98px;
+  animation: none;
   transform: translateZ(0);
-  transform-origin: 50% 22%;
+  transform-origin: 50% 50%;
+}
+
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-blink {
+  display: none;
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-hint {
@@ -510,9 +521,9 @@
 
   #ask-anchor-anchor-dock.is-tucked {
     left: auto;
-    right: -26px;
+    right: -10px;
     top: auto;
-    bottom: 14px;
+    bottom: 80px;
   }
 }
 
