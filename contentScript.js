@@ -11,6 +11,7 @@
   const ANCHOR_NAME_LENGTH = 28;
   const SELECTION_CONTEXT_LENGTH = 42;
   const STORAGE_KEY_PREFIX = "ask-anchor:anchors:";
+  const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   const PLATFORM_ADAPTERS = [
     {
@@ -112,6 +113,7 @@
   let pendingFollowUpTimer = null;
   let pendingFollowUpPollTimer = null;
   let sentQuestionStabilizeTimer = null;
+  let catAnimationFrame = null;
   let catDockTucked = false;
   let selectionTimer = null;
 
@@ -341,31 +343,7 @@
       dock.id = DOCK_ID;
       dock.innerHTML = `
         <button class="ask-anchor-dock-button" type="button" aria-label="AskAnchor" aria-expanded="false">
-            <span class="ask-anchor-cat" aria-hidden="true">
-              <span class="ask-anchor-cat__ear ask-anchor-cat__ear--left"></span>
-              <span class="ask-anchor-cat__ear ask-anchor-cat__ear--right"></span>
-              <span class="ask-anchor-cat__ear-core ask-anchor-cat__ear-core--left"></span>
-              <span class="ask-anchor-cat__ear-core ask-anchor-cat__ear-core--right"></span>
-              <span class="ask-anchor-cat__face">
-                <span class="ask-anchor-cat__eye ask-anchor-cat__eye--left"></span>
-                <span class="ask-anchor-cat__eye ask-anchor-cat__eye--right"></span>
-                <span class="ask-anchor-cat__pupil ask-anchor-cat__pupil--left"></span>
-                <span class="ask-anchor-cat__pupil ask-anchor-cat__pupil--right"></span>
-                <span class="ask-anchor-cat__nose"></span>
-                <span class="ask-anchor-cat__mouth"></span>
-                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--left"></span>
-                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--left ask-anchor-cat__whisker--upper"></span>
-                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--left ask-anchor-cat__whisker--lower"></span>
-                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--right"></span>
-                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--right ask-anchor-cat__whisker--upper"></span>
-                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--right ask-anchor-cat__whisker--lower"></span>
-              </span>
-              <span class="ask-anchor-cat__body"></span>
-              <span class="ask-anchor-cat__belly"></span>
-              <span class="ask-anchor-cat__foot ask-anchor-cat__foot--left"></span>
-              <span class="ask-anchor-cat__foot ask-anchor-cat__foot--right"></span>
-              <span class="ask-anchor-cat__tail"></span>
-          </span>
+          <canvas class="ask-anchor-cat-canvas" width="152" height="152" aria-hidden="true"></canvas>
         </button>
         <div id="${TIMELINE_ID}" class="ask-anchor-anchor-timeline" aria-label="AskAnchor timeline"></div>
         <div id="${LIST_ID}" class="ask-anchor-anchor-list" hidden></div>
@@ -375,6 +353,7 @@
       const catButton = dock.querySelector(".ask-anchor-dock-button");
       catButton.addEventListener("click", handleCatClick);
       catButton.addEventListener("dblclick", tuckCatDock);
+      startCatMascotRenderer(dock);
     }
 
     const button = dock.querySelector(".ask-anchor-dock-button");
@@ -426,6 +405,218 @@
     if (dock) {
       dock.remove();
     }
+    stopCatMascotRenderer();
+  }
+
+  function startCatMascotRenderer(dock) {
+    stopCatMascotRenderer();
+
+    const canvas = dock.querySelector(".ask-anchor-cat-canvas");
+    const context = canvas?.getContext?.("2d");
+    if (!canvas || !context) {
+      return;
+    }
+
+    const render = (timestamp) => {
+      if (!document.contains(canvas)) {
+        stopCatMascotRenderer();
+        return;
+      }
+
+      drawCatMascot(context, canvas, reducedMotionQuery.matches ? 0 : timestamp, catDockTucked);
+      catAnimationFrame = window.requestAnimationFrame(render);
+    };
+
+    catAnimationFrame = window.requestAnimationFrame(render);
+  }
+
+  function stopCatMascotRenderer() {
+    if (catAnimationFrame) {
+      window.cancelAnimationFrame(catAnimationFrame);
+      catAnimationFrame = null;
+    }
+  }
+
+  function drawCatMascot(context, canvas, timestamp, tucked) {
+    const width = canvas.width;
+    const height = canvas.height;
+    const t = timestamp / 1000;
+    const bob = tucked ? 0 : Math.sin(t * 5.2) * 2;
+    const blink = Math.sin(t * 2.8) > 0.965 ? 0.22 : 1;
+
+    context.clearRect(0, 0, width, height);
+    context.save();
+    context.translate(width / 2, height / 2 + bob);
+    context.rotate(Math.sin(t * 1.1) * 0.035);
+
+    drawSoftShadow(context);
+    drawCatTail(context, t, tucked);
+    drawCatHead(context, t);
+    drawCatEyes(context, blink, tucked);
+    drawCatWhiskers(context, tucked);
+
+    context.restore();
+  }
+
+  function drawSoftShadow(context) {
+    const shadow = context.createRadialGradient(0, 48, 4, 0, 48, 58);
+    shadow.addColorStop(0, "rgba(15, 23, 42, 0.24)");
+    shadow.addColorStop(1, "rgba(15, 23, 42, 0)");
+    context.fillStyle = shadow;
+    context.beginPath();
+    context.ellipse(0, 48, 45, 12, 0, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  function drawCatHead(context, t) {
+    const furGradient = context.createRadialGradient(-18, -22, 8, 4, 8, 58);
+    furGradient.addColorStop(0, "#242735");
+    furGradient.addColorStop(0.45, "#11131b");
+    furGradient.addColorStop(1, "#030407");
+
+    context.save();
+    context.shadowColor = "rgba(15, 23, 42, 0.34)";
+    context.shadowBlur = 16;
+    context.shadowOffsetY = 8;
+
+    drawEar(context, -35, -34, -62, -78, -12, -50, furGradient);
+    drawEar(context, 35, -34, 60, -76, 13, -50, furGradient);
+
+    context.fillStyle = furGradient;
+    context.beginPath();
+    context.moveTo(-58, -4);
+    context.bezierCurveTo(-58, -38, -34, -60, 0, -60);
+    context.bezierCurveTo(36, -60, 60, -36, 58, 2);
+    context.bezierCurveTo(56, 38, 33, 55, 0, 56);
+    context.bezierCurveTo(-36, 56, -58, 34, -58, -4);
+    context.fill();
+
+    context.shadowColor = "transparent";
+    context.strokeStyle = "rgba(255, 255, 255, 0.08)";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(-46, -35);
+    context.bezierCurveTo(-20, -62, 29, -58, 47, -23);
+    context.stroke();
+
+    const cheek = context.createRadialGradient(-30, 8, 2, -30, 8, 28);
+    cheek.addColorStop(0, "rgba(255, 255, 255, 0.08)");
+    cheek.addColorStop(1, "rgba(255, 255, 255, 0)");
+    context.fillStyle = cheek;
+    context.beginPath();
+    context.ellipse(-30, 8, 26, 18, -0.4, 0, Math.PI * 2);
+    context.fill();
+
+    context.restore();
+
+    context.fillStyle = "#171923";
+    context.beginPath();
+    context.ellipse(-14, 48, 13, 8, 0.15, 0, Math.PI * 2);
+    context.ellipse(16, 48, 13, 8, -0.15, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = "rgba(255, 255, 255, 0.04)";
+    context.beginPath();
+    context.ellipse(0, 25, 13, 21, Math.sin(t) * 0.04, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  function drawEar(context, ax, ay, bx, by, cx, cy, fillStyle) {
+    context.fillStyle = fillStyle;
+    context.beginPath();
+    context.moveTo(ax, ay);
+    context.quadraticCurveTo(bx, by, cx, cy);
+    context.quadraticCurveTo(ax + (cx - ax) * 0.26, ay - 4, ax, ay);
+    context.fill();
+
+    const inner = context.createLinearGradient(bx, by, cx, cy);
+    inner.addColorStop(0, "rgba(204, 137, 103, 0.84)");
+    inner.addColorStop(1, "rgba(74, 45, 47, 0.6)");
+    context.fillStyle = inner;
+    context.beginPath();
+    context.moveTo(ax * 0.88, ay - 3);
+    context.quadraticCurveTo(bx * 0.9, by + 14, cx * 0.9, cy + 8);
+    context.quadraticCurveTo(ax * 0.9 + (cx - ax) * 0.16, ay - 1, ax * 0.88, ay - 3);
+    context.fill();
+  }
+
+  function drawCatEyes(context, blink, tucked) {
+    const eyeY = tucked ? -12 : -10;
+    drawEye(context, -22, eyeY, blink);
+    drawEye(context, 22, eyeY, blink);
+
+    context.fillStyle = "#1f1517";
+    context.beginPath();
+    context.moveTo(0, 10);
+    context.quadraticCurveTo(5, 11, 0, 15);
+    context.quadraticCurveTo(-5, 11, 0, 10);
+    context.fill();
+  }
+
+  function drawEye(context, x, y, blink) {
+    const gold = context.createRadialGradient(x - 3, y - 4, 2, x, y, 18);
+    gold.addColorStop(0, "#ffe59a");
+    gold.addColorStop(0.55, "#d8a044");
+    gold.addColorStop(1, "#8b5c1f");
+
+    context.save();
+    context.translate(x, y);
+    context.scale(1, blink);
+
+    context.fillStyle = gold;
+    context.beginPath();
+    context.ellipse(0, 0, 17, 21, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = "#05060a";
+    context.beginPath();
+    context.ellipse(0, 0, 10, 14, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = "#ffffff";
+    context.beginPath();
+    context.arc(5, -7, 3.2, 0, Math.PI * 2);
+    context.fill();
+
+    context.restore();
+  }
+
+  function drawCatWhiskers(context, tucked) {
+    if (tucked) {
+      return;
+    }
+
+    context.strokeStyle = "rgba(12, 14, 20, 0.72)";
+    context.lineWidth = 1.5;
+    context.lineCap = "round";
+
+    [
+      [-12, 18, -48, 12],
+      [-11, 22, -50, 24],
+      [12, 18, 48, 12],
+      [11, 22, 50, 24]
+    ].forEach(([x1, y1, x2, y2]) => {
+      context.beginPath();
+      context.moveTo(x1, y1);
+      context.quadraticCurveTo((x1 + x2) / 2, y1 - 4, x2, y2);
+      context.stroke();
+    });
+  }
+
+  function drawCatTail(context, t, tucked) {
+    if (tucked) {
+      return;
+    }
+
+    context.save();
+    context.strokeStyle = "#07080d";
+    context.lineWidth = 17;
+    context.lineCap = "round";
+    context.beginPath();
+    context.moveTo(-43, 33);
+    context.bezierCurveTo(-72, 22, -63, -23 + Math.sin(t * 1.8) * 4, -36, -4);
+    context.stroke();
+    context.restore();
   }
 
   function handleCatClick(event) {
