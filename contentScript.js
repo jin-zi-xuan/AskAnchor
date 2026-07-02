@@ -774,6 +774,7 @@
       dock.style.removeProperty("--ask-anchor-cat-left");
       dock.style.removeProperty("--ask-anchor-cat-right");
       dock.style.removeProperty("--ask-anchor-cat-top");
+      dock.style.removeProperty("bottom");
       return;
     }
 
@@ -788,6 +789,7 @@
     dock.style.setProperty("--ask-anchor-cat-left", `${left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
+    dock.style.removeProperty("bottom");
   }
 
   function createCatPositionFromPointer(event, editorRect) {
@@ -823,6 +825,7 @@
     dock.style.setProperty("--ask-anchor-cat-left", `${position.left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${position.top}px`);
+    dock.style.removeProperty("bottom");
   }
 
   function loadCatDockPosition() {
