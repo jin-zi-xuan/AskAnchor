@@ -281,21 +281,25 @@
   display: block;
   width: 28px;
   height: 28px;
-  transform: rotate(-8deg);
+  transform: rotate(-7deg);
   transition: transform 160ms ease;
 }
 
 .ask-anchor-anchor-index::before {
   position: absolute;
-  inset: 1px;
+  inset: 0;
   z-index: 0;
   display: block;
-  border: 2px solid #111318;
-  border-radius: 46% 48% 45% 48%;
-  background: #ffffff;
-  box-shadow: 0 2px 0 rgba(15, 23, 42, 0.08);
+  border: 2px solid #8d949e;
+  border-radius: 46% 48% 52% 50%;
+  background:
+    radial-gradient(circle at 38% 22%, rgba(255, 255, 255, 0.98) 0 16%, transparent 17%),
+    linear-gradient(145deg, #ffffff 0%, #f8fbff 58%, #eef3f8 100%);
+  box-shadow:
+    0 2px 0 rgba(148, 163, 184, 0.18),
+    inset -1px -1px 0 rgba(148, 163, 184, 0.16);
   content: "";
-  transform: rotate(7deg);
+  transform: rotate(6deg);
 }
 
 .ask-anchor-anchor-item:hover .ask-anchor-anchor-index {
@@ -307,9 +311,14 @@
   position: absolute;
   display: block;
   z-index: 1;
-  background: #f3a6bd;
-  border: 1.5px solid #111318;
-  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.55);
+  border: 1.4px solid #767e89;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.9) 0 14%, transparent 15%),
+    radial-gradient(circle at 66% 20%, rgba(255, 255, 255, 0.54) 0 10%, transparent 11%),
+    linear-gradient(145deg, #ffd0dc 0%, #f49bb6 56%, #ea789d 100%);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.4),
+    0 1px 0 rgba(148, 163, 184, 0.18);
 }
 
 .ask-anchor-paw__toe {
@@ -321,8 +330,8 @@
 
 .ask-anchor-paw__toe--one {
   left: 3px;
-  top: 9px;
-  transform: rotate(-28deg);
+  top: 10px;
+  transform: rotate(-32deg);
 }
 
 .ask-anchor-paw__toe--two {
@@ -339,16 +348,20 @@
 
 .ask-anchor-paw__toe--four {
   right: 3px;
-  top: 9px;
-  transform: rotate(28deg);
+  top: 10px;
+  transform: rotate(32deg);
 }
 
 .ask-anchor-paw__pad {
-  left: 7px;
+  left: 6px;
   bottom: 4px;
-  width: 15px;
-  height: 12px;
-  border-radius: 46% 46% 58% 58%;
+  width: 17px;
+  height: 13px;
+  border-radius: 48% 48% 58% 58%;
+  background:
+    radial-gradient(circle at 28% 30%, rgba(255, 255, 255, 0.92) 0 10%, transparent 11%),
+    radial-gradient(circle at 44% 20%, rgba(255, 255, 255, 0.55) 0 7%, transparent 8%),
+    linear-gradient(145deg, #ffc8d6 0%, #f48ead 58%, #ea7599 100%);
 }
 
 .ask-anchor-anchor-name {
