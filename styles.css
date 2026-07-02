@@ -43,11 +43,11 @@
 
 #ask-anchor-anchor-dock.is-tucked {
   left: auto;
-  right: -36px;
+  right: -10px;
   top: auto;
   bottom: 86px;
-  width: 86px;
-  min-width: 86px;
+  width: 76px;
+  min-width: 76px;
   justify-items: end;
   --ask-anchor-cat-shift: 0;
 }
@@ -147,8 +147,8 @@
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-dock-button {
   animation: none;
-  width: 86px;
-  height: 108px;
+  width: 76px;
+  height: 94px;
   transform: translateX(0);
 }
 
@@ -156,7 +156,7 @@
   left: auto;
   right: 0;
   bottom: 0;
-  width: 86px;
+  width: 76px;
   animation: none;
   transform: translateZ(0);
   transform-origin: 50% 50%;
@@ -521,7 +521,7 @@
 
   #ask-anchor-anchor-dock.is-tucked {
     left: auto;
-    right: -38px;
+    right: -12px;
     top: auto;
     bottom: 76px;
   }
