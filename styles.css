@@ -44,8 +44,8 @@
 #ask-anchor-anchor-dock.is-tucked {
   left: auto;
   right: -8px;
-  top: auto;
-  bottom: 86px;
+  top: var(--ask-anchor-cat-top, auto);
+  bottom: auto;
   width: 68px;
   min-width: 68px;
   justify-items: end;
@@ -167,7 +167,9 @@
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-hint {
-  display: none;
+  right: 64px;
+  bottom: 34px;
+  display: block;
 }
 
 .ask-anchor-anchor-list {
@@ -522,8 +524,8 @@
   #ask-anchor-anchor-dock.is-tucked {
     left: auto;
     right: -10px;
-    top: auto;
-    bottom: 76px;
+    top: var(--ask-anchor-cat-top, auto);
+    bottom: auto;
   }
 }
 

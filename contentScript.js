@@ -13,6 +13,7 @@
   const SELECTION_CONTEXT_LENGTH = 42;
   const STORAGE_KEY_PREFIX = "ask-anchor:anchors:";
   const CAT_POSITION_STORAGE_KEY = "ask-anchor:cat-position";
+  const TUCKED_CAT_TOP_STORAGE_KEY = "ask-anchor:tucked-cat-top";
   const CAT_IMAGE_URL = chrome.runtime.getURL("assets/askanchor-cat-perch.png");
   const CAT_PEEK_IMAGE_URL = chrome.runtime.getURL("assets/askanchor-cat-peek-right.png");
 
@@ -118,6 +119,7 @@
   let sentQuestionStabilizeTimer = null;
   let catDockTucked = false;
   let catDockPosition = loadCatDockPosition();
+  let tuckedCatTop = loadTuckedCatTop();
   let catDragState = null;
   let selectionTimer = null;
   let activeAnchorStorageKey = getAnchorStorageKey();
@@ -633,10 +635,6 @@
 
     event.preventDefault();
     event.stopPropagation();
-    if (catDockTucked) {
-      catDockTucked = false;
-      dock.classList.remove("is-tucked");
-    }
 
     const rect = dock.getBoundingClientRect();
     catDragState = {
@@ -645,6 +643,7 @@
       startY: event.clientY,
       offsetX: event.clientX - rect.left,
       offsetY: event.clientY - rect.top,
+      tucked: catDockTucked,
       moved: false
     };
 
@@ -668,6 +667,13 @@
 
     const dock = document.getElementById(DOCK_ID);
     if (!dock) {
+      return;
+    }
+
+    if (catDragState.tucked) {
+      const height = dock.offsetHeight || 84;
+      tuckedCatTop = clamp(event.clientY - catDragState.offsetY, 8, window.innerHeight - height - 8);
+      applyTuckedCatDockPosition(dock);
       return;
     }
 
@@ -698,7 +704,12 @@
       dock.classList.remove("is-dragging");
     }
 
-    if (catDragState.moved && catDockPosition) {
+    if (catDragState.moved && catDragState.tucked) {
+      saveTuckedCatTop(tuckedCatTop);
+      window.setTimeout(() => {
+        catDragState = null;
+      }, 0);
+    } else if (catDragState.moved && catDockPosition) {
       saveCatDockPosition(catDockPosition);
       window.setTimeout(() => {
         catDragState = null;
@@ -756,10 +767,9 @@
 
     dock.classList.toggle("is-tucked", catDockTucked);
     updateCatImage(dock);
+    updateCatHint(dock);
     if (catDockTucked) {
-      dock.style.removeProperty("--ask-anchor-cat-left");
-      dock.style.removeProperty("--ask-anchor-cat-right");
-      dock.style.removeProperty("--ask-anchor-cat-top");
+      applyTuckedCatDockPosition(dock);
       return;
     }
 
@@ -830,6 +840,16 @@
     dock.style.removeProperty("bottom");
   }
 
+  function applyTuckedCatDockPosition(dock) {
+    const height = dock.offsetHeight || 84;
+    const top = clamp(tuckedCatTop ?? window.innerHeight - height - 86, 8, window.innerHeight - height - 8);
+    tuckedCatTop = top;
+    dock.style.removeProperty("--ask-anchor-cat-left");
+    dock.style.setProperty("--ask-anchor-cat-right", "-8px");
+    dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
+    dock.style.removeProperty("bottom");
+  }
+
   function updateCatImage(dock) {
     const catImage = dock.querySelector(".ask-anchor-cat-image");
     if (!catImage) {
@@ -840,6 +860,15 @@
     if (catImage.src !== nextSrc) {
       catImage.src = nextSrc;
     }
+  }
+
+  function updateCatHint(dock) {
+    const hint = dock.querySelector(".ask-anchor-cat-hint");
+    if (!hint) {
+      return;
+    }
+
+    hint.textContent = catDockTucked ? "点击唤回" : "双击隐藏小猫";
   }
 
   function loadCatDockPosition() {
@@ -874,6 +903,27 @@
       localStorage.setItem(CAT_POSITION_STORAGE_KEY, JSON.stringify(position));
     } catch (error) {
       console.debug("[AskAnchor] Failed to save cat position:", error);
+    }
+  }
+
+  function loadTuckedCatTop() {
+    try {
+      const value = Number(localStorage.getItem(TUCKED_CAT_TOP_STORAGE_KEY));
+      return Number.isFinite(value) ? value : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function saveTuckedCatTop(top) {
+    try {
+      if (!Number.isFinite(top)) {
+        localStorage.removeItem(TUCKED_CAT_TOP_STORAGE_KEY);
+        return;
+      }
+      localStorage.setItem(TUCKED_CAT_TOP_STORAGE_KEY, String(Math.round(top)));
+    } catch (error) {
+      console.debug("[AskAnchor] Failed to save tucked cat position:", error);
     }
   }
 
