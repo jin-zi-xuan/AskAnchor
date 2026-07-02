@@ -725,11 +725,20 @@
       return;
     }
 
+    const editor = findPromptEditor();
+    const editorRect = editor?.getBoundingClientRect?.();
+
+    if (editorRect && editorRect.width > 0 && editorRect.height > 0) {
+      catDockPosition = createCatPositionFromPointer(event, editorRect);
+      applyCatDockPosition(dock, getCatDockViewportPosition(catDockPosition, editorRect));
+      return;
+    }
+
     const width = dock.offsetWidth || 58;
     const height = dock.offsetHeight || 58;
     const left = clamp(event.clientX - catDragState.offsetX, 4, window.innerWidth - width - 4);
     const top = clamp(event.clientY - catDragState.offsetY, 4, window.innerHeight - height - 4);
-    catDockPosition = { left, top };
+    catDockPosition = { mode: "free", left, top };
     applyCatDockPosition(dock, catDockPosition);
   }
 
@@ -803,11 +812,9 @@
     }
 
     if (catDockPosition) {
-      const safePosition = {
-        left: clamp(catDockPosition.left, 4, window.innerWidth - 58),
-        top: clamp(catDockPosition.top, 4, window.innerHeight - 58)
-      };
-      catDockPosition = safePosition;
+      const editor = findPromptEditor();
+      const editorRect = editor?.getBoundingClientRect?.();
+      const safePosition = getCatDockViewportPosition(catDockPosition, editorRect);
       applyCatDockPosition(dock, safePosition);
       return;
     }
@@ -835,6 +842,35 @@
     dock.style.setProperty("--ask-anchor-cat-walk", "0px");
   }
 
+  function createCatPositionFromPointer(event, editorRect) {
+    const catWidth = 58;
+    const x = clamp(event.clientX - catDragState.offsetX + catWidth / 2, editorRect.left + 28, editorRect.right - 28);
+    const ratio = editorRect.width > 0 ? (x - editorRect.left) / editorRect.width : 0.82;
+    const rawOffsetY = event.clientY - catDragState.offsetY - (editorRect.top - 50);
+    const offsetY = clamp(rawOffsetY, -14, 14);
+
+    return {
+      mode: "editor-edge",
+      ratio: clamp(ratio, 0.08, 0.92),
+      offsetY
+    };
+  }
+
+  function getCatDockViewportPosition(position, editorRect) {
+    if (position?.mode === "editor-edge" && editorRect && editorRect.width > 0 && editorRect.height > 0) {
+      const catWidth = 58;
+      const ratio = clamp(position.ratio ?? 0.82, 0.08, 0.92);
+      const left = clamp(editorRect.left + editorRect.width * ratio - catWidth / 2, 4, window.innerWidth - catWidth - 4);
+      const top = clamp(editorRect.top - 50 + (position.offsetY || 0), 4, window.innerHeight - catWidth - 4);
+      return { left, top };
+    }
+
+    return {
+      left: clamp(position?.left ?? window.innerWidth - 76, 4, window.innerWidth - 58),
+      top: clamp(position?.top ?? window.innerHeight - 120, 4, window.innerHeight - 58)
+    };
+  }
+
   function applyCatDockPosition(dock, position) {
     dock.style.setProperty("--ask-anchor-cat-left", `${position.left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
@@ -849,10 +885,17 @@
         return null;
       }
       const value = JSON.parse(raw);
+      if (
+        value?.mode === "editor-edge"
+        && typeof value.ratio === "number"
+        && typeof value.offsetY === "number"
+      ) {
+        return value;
+      }
       if (typeof value?.left !== "number" || typeof value?.top !== "number") {
         return null;
       }
-      return value;
+      return { mode: "free", left: value.left, top: value.top };
     } catch (error) {
       return null;
     }
