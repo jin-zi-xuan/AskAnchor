@@ -42,7 +42,7 @@
 
 #ask-anchor-anchor-dock.is-tucked {
   left: auto;
-  right: -42px;
+  right: -50px;
   top: 50%;
   width: 76px;
   justify-items: end;
@@ -110,22 +110,51 @@
   animation-delay: 40ms;
 }
 
+.ask-anchor-cat-hint {
+  position: absolute;
+  right: -4px;
+  bottom: 50px;
+  z-index: 3;
+  display: block;
+  width: max-content;
+  max-width: 160px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.9);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+  color: #ffffff;
+  font: 700 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
+  opacity: 0;
+  padding: 7px 10px;
+  pointer-events: none;
+  transform: translateY(4px) scale(0.96);
+  transition: opacity 140ms ease, transform 140ms ease;
+  white-space: nowrap;
+}
+
 .ask-anchor-dock-button:hover,
 .ask-anchor-dock-button[aria-expanded="true"] {
   transform: translateY(-2px);
 }
 
+.ask-anchor-dock-button:hover .ask-anchor-cat-hint {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-dock-button {
   animation: none;
-  transform: translateX(-14px) rotate(-7deg);
+  transform: translateX(-10px);
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-image {
   animation: none;
-  transform: translateX(-8px) rotate(-7deg) scale(1.04);
+  transform: translate(10px, -10px) rotate(90deg) scale(1.04);
+  transform-origin: 48% 48%;
 }
 
-#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-blink {
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-blink,
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-hint {
   display: none;
 }
 

@@ -371,6 +371,7 @@
           <img class="ask-anchor-cat-image" alt="" aria-hidden="true">
           <span class="ask-anchor-cat-blink ask-anchor-cat-blink--left" aria-hidden="true"></span>
           <span class="ask-anchor-cat-blink ask-anchor-cat-blink--right" aria-hidden="true"></span>
+          <span class="ask-anchor-cat-hint" aria-hidden="true">\u53cc\u51fb\u9690\u85cf\u5c0f\u732b</span>
         </button>
         <div id="${LIST_ID}" class="ask-anchor-anchor-list" hidden></div>
       `;
