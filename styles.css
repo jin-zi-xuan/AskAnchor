@@ -58,7 +58,7 @@
   grid-column: 2;
   grid-row: 1;
   width: 58px;
-  height: 58px;
+  height: 50px;
   border: 0;
   background: transparent;
   cursor: grab;
@@ -74,10 +74,11 @@
 
 .ask-anchor-cat-canvas {
   position: absolute;
-  inset: -5px;
+  left: -7px;
+  top: -18px;
   display: block;
-  width: 68px;
-  height: 68px;
+  width: 72px;
+  height: 72px;
   transform: translateZ(0);
   pointer-events: none;
 }

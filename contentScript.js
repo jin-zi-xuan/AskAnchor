@@ -450,72 +450,27 @@
 
     context.clearRect(0, 0, width, height);
     context.save();
-    context.translate(width / 2, height / 2 + 4 + bob);
+    context.translate(width / 2, height / 2 + 14 + bob);
     context.rotate(tucked ? -0.22 : Math.sin(t * 0.9) * 0.012);
     context.scale(tucked ? 1.04 : 0.94, tucked ? 1.04 : 0.94);
 
     drawSoftShadow(context);
-    drawSittingCatBody(context, t, tucked);
     drawCatHead(context, t, tucked);
     drawCatEyes(context, blink, tucked);
     drawCatWhiskers(context, tucked);
+    drawRestingPaws(context, t, tucked);
 
     context.restore();
   }
 
   function drawSoftShadow(context) {
-    const shadow = context.createRadialGradient(0, 50, 3, 0, 50, 42);
-    shadow.addColorStop(0, "rgba(15, 23, 42, 0.22)");
+    const shadow = context.createRadialGradient(0, 32, 3, 0, 32, 34);
+    shadow.addColorStop(0, "rgba(15, 23, 42, 0.18)");
     shadow.addColorStop(1, "rgba(15, 23, 42, 0)");
     context.fillStyle = shadow;
     context.beginPath();
-    context.ellipse(0, 51, 35, 8, 0, 0, Math.PI * 2);
+    context.ellipse(0, 32, 32, 7, 0, 0, Math.PI * 2);
     context.fill();
-  }
-
-  function drawSittingCatBody(context, t, tucked) {
-    if (tucked) {
-      return;
-    }
-
-    const bodyGradient = context.createRadialGradient(-16, 12, 5, 3, 32, 48);
-    bodyGradient.addColorStop(0, "#20232c");
-    bodyGradient.addColorStop(0.55, "#101218");
-    bodyGradient.addColorStop(1, "#030407");
-
-    context.save();
-    context.fillStyle = bodyGradient;
-    context.shadowColor = "rgba(15, 23, 42, 0.24)";
-    context.shadowBlur = 12;
-    context.shadowOffsetY = 5;
-
-    context.beginPath();
-    context.moveTo(-28, 12);
-    context.bezierCurveTo(-34, 31, -26, 51, -4, 54);
-    context.bezierCurveTo(22, 57, 34, 40, 27, 16);
-    context.bezierCurveTo(20, -5, -19, -7, -28, 12);
-    context.fill();
-
-    context.shadowColor = "transparent";
-    context.strokeStyle = "#08090d";
-    context.lineWidth = 11;
-    context.lineCap = "round";
-    context.beginPath();
-    context.moveTo(23, 37);
-    context.bezierCurveTo(43, 36, 47, 12 + Math.sin(t * 1.5) * 2, 28, 8);
-    context.stroke();
-
-    context.fillStyle = "#08090d";
-    context.beginPath();
-    context.ellipse(-14, 51, 12, 6, -0.18, 0, Math.PI * 2);
-    context.ellipse(13, 51, 12, 6, 0.18, 0, Math.PI * 2);
-    context.fill();
-
-    context.fillStyle = "rgba(255, 255, 255, 0.035)";
-    context.beginPath();
-    context.ellipse(-3, 27, 11, 19, -0.1, 0, Math.PI * 2);
-    context.fill();
-    context.restore();
   }
 
   function drawCatHead(context, t, tucked) {
@@ -529,16 +484,16 @@
     context.shadowBlur = 12;
     context.shadowOffsetY = 5;
 
-    drawEar(context, -28, -32, -43, -67, -5, -45, furGradient);
-    drawEar(context, 24, -33, 42, -66, 4, -45, furGradient);
+    drawEar(context, -28, -30, -43, -64, -5, -43, furGradient);
+    drawEar(context, 24, -31, 42, -63, 4, -43, furGradient);
 
     context.fillStyle = furGradient;
     context.beginPath();
-    context.moveTo(-42, -13);
-    context.bezierCurveTo(-42, -42, -25, -56, 1, -56);
-    context.bezierCurveTo(28, -56, 45, -40, 43, -11);
-    context.bezierCurveTo(42, 15, 26, 30, 1, 31);
-    context.bezierCurveTo(-26, 32, -43, 13, -42, -13);
+    context.moveTo(-42, -12);
+    context.bezierCurveTo(-42, -40, -25, -54, 1, -54);
+    context.bezierCurveTo(28, -54, 45, -38, 43, -10);
+    context.bezierCurveTo(42, 14, 26, 29, 1, 30);
+    context.bezierCurveTo(-26, 31, -43, 12, -42, -12);
     context.fill();
 
     context.shadowColor = "transparent";
@@ -639,6 +594,45 @@
       context.quadraticCurveTo((x1 + x2) / 2, y1 - 4, x2, y2);
       context.stroke();
     });
+  }
+
+  function drawRestingPaws(context, t, tucked) {
+    if (tucked) {
+      return;
+    }
+
+    const pawGradient = context.createRadialGradient(-20, 28, 3, -18, 34, 16);
+    pawGradient.addColorStop(0, "#1b1e27");
+    pawGradient.addColorStop(1, "#05060a");
+
+    context.save();
+    context.fillStyle = pawGradient;
+    context.shadowColor = "rgba(15, 23, 42, 0.18)";
+    context.shadowBlur = 7;
+    context.shadowOffsetY = 3;
+
+    drawPaw(context, -20, 32 + Math.sin(t * 1.7) * 0.6, -0.08);
+    drawPaw(context, 20, 32 + Math.sin(t * 1.7 + 0.6) * 0.5, 0.08);
+    context.restore();
+  }
+
+  function drawPaw(context, x, y, rotation) {
+    context.save();
+    context.translate(x, y);
+    context.rotate(rotation);
+    context.beginPath();
+    context.ellipse(0, 0, 12, 9, 0, 0, Math.PI * 2);
+    context.fill();
+
+    context.strokeStyle = "rgba(255, 255, 255, 0.08)";
+    context.lineWidth = 1;
+    [-4, 0, 4].forEach((offset) => {
+      context.beginPath();
+      context.moveTo(offset, -5);
+      context.quadraticCurveTo(offset + 1, -1, offset, 4);
+      context.stroke();
+    });
+    context.restore();
   }
 
   function handleCatClick(event) {
@@ -834,8 +828,8 @@
     }
 
     const catWidth = 56;
-    const left = Math.min(window.innerWidth - catWidth - 8, Math.max(8, rect.right - catWidth - 12));
-    const top = Math.min(window.innerHeight - 64, Math.max(8, rect.top - 54));
+    const left = Math.min(window.innerWidth - catWidth - 8, Math.max(8, rect.right - catWidth - 96));
+    const top = Math.min(window.innerHeight - 64, Math.max(8, rect.top - 45));
     dock.style.setProperty("--ask-anchor-cat-left", `${left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
@@ -846,8 +840,8 @@
     const catWidth = 58;
     const x = clamp(event.clientX - catDragState.offsetX + catWidth / 2, editorRect.left + 28, editorRect.right - 28);
     const ratio = editorRect.width > 0 ? (x - editorRect.left) / editorRect.width : 0.82;
-    const rawOffsetY = event.clientY - catDragState.offsetY - (editorRect.top - 50);
-    const offsetY = clamp(rawOffsetY, -14, 14);
+    const rawOffsetY = event.clientY - catDragState.offsetY - (editorRect.top - 45);
+    const offsetY = clamp(rawOffsetY, -8, 8);
 
     return {
       mode: "editor-edge",
@@ -861,7 +855,7 @@
       const catWidth = 58;
       const ratio = clamp(position.ratio ?? 0.82, 0.08, 0.92);
       const left = clamp(editorRect.left + editorRect.width * ratio - catWidth / 2, 4, window.innerWidth - catWidth - 4);
-      const top = clamp(editorRect.top - 50 + (position.offsetY || 0), 4, window.innerHeight - catWidth - 4);
+      const top = clamp(editorRect.top - 45 + (position.offsetY || 0), 4, window.innerHeight - catWidth - 4);
       return { left, top };
     }
 
