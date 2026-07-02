@@ -119,6 +119,7 @@
   let catDragState = null;
   let selectionTimer = null;
   let activeAnchorStorageKey = getAnchorStorageKey();
+  let conversationTimelineTimer = null;
 
   document.addEventListener("selectionchange", () => {
     clearTimeout(selectionTimer);
@@ -140,13 +141,17 @@
   window.addEventListener("scroll", updateCatDockPosition, { passive: true });
   document.addEventListener("scroll", updateCatDockPosition, { passive: true, capture: true });
 
-  const conversationObserver = new MutationObserver(schedulePendingFollowUpCheck);
+  const conversationObserver = new MutationObserver(() => {
+    schedulePendingFollowUpCheck();
+    scheduleConversationTimelineRender();
+  });
   conversationObserver.observe(document.documentElement, {
     childList: true,
     subtree: true
   });
   renderAnchorDock();
   window.setTimeout(loadAnchorsFromSession, 500);
+  window.setTimeout(renderConversationTimeline, 900);
   window.setInterval(handleConversationRouteChange, 800);
 
   function handleSelectionChange() {
@@ -343,6 +348,7 @@
     activeAnchorStorageKey = nextKey;
     closeAnchorList();
     loadAnchorsFromSession();
+    scheduleConversationTimelineRender();
   }
 
   function createAnchorName(text) {
@@ -362,6 +368,10 @@
       dock.innerHTML = `
         <button class="ask-anchor-dock-button" type="button" aria-label="AskAnchor" aria-expanded="false">
           <img class="ask-anchor-cat-image" alt="" aria-hidden="true">
+          <span class="ask-anchor-cat-ear ask-anchor-cat-ear--left" aria-hidden="true"></span>
+          <span class="ask-anchor-cat-ear ask-anchor-cat-ear--right" aria-hidden="true"></span>
+          <span class="ask-anchor-cat-blink ask-anchor-cat-blink--left" aria-hidden="true"></span>
+          <span class="ask-anchor-cat-blink ask-anchor-cat-blink--right" aria-hidden="true"></span>
         </button>
         <div id="${LIST_ID}" class="ask-anchor-anchor-list" hidden></div>
       `;
@@ -403,13 +413,25 @@
       list.appendChild(item);
     });
 
-    renderAnchorTimeline();
+    renderConversationTimeline();
     updateCatDockPosition();
   }
 
-  function renderAnchorTimeline() {
+  function scheduleConversationTimelineRender() {
+    if (conversationTimelineTimer) {
+      return;
+    }
+
+    conversationTimelineTimer = window.setTimeout(() => {
+      conversationTimelineTimer = null;
+      renderConversationTimeline();
+    }, 350);
+  }
+
+  function renderConversationTimeline() {
     let timeline = document.getElementById(TIMELINE_ID);
-    if (anchors.length === 0) {
+    const messages = collectTimelineMessageElements();
+    if (messages.length === 0) {
       if (timeline) {
         timeline.remove();
       }
@@ -425,19 +447,67 @@
     }
 
     timeline.innerHTML = "";
-    anchors.forEach((anchor, index) => {
+    messages.forEach((message, index) => {
+      const label = createTimelineLabel(message, index);
       const tick = document.createElement("button");
       tick.type = "button";
-      tick.className = `ask-anchor-timeline-tick${anchor.id === activeAnchorId ? " is-active" : ""}`;
-      tick.setAttribute("aria-label", `\u8fd4\u56de\u951a\u70b9 ${index + 1}\uff1a${anchor.name}`);
-      tick.title = anchor.name;
+      tick.className = "ask-anchor-timeline-tick";
+      tick.setAttribute("aria-label", `\u5b9a\u4f4d\u5230\u5bf9\u8bdd ${index + 1}\uff1a${label}`);
+      tick.title = label;
       tick.addEventListener("click", (event) => {
         event.stopPropagation();
         closeAnchorList();
-        returnToAnchor(anchor.id);
+        scrollToConversationMessage(message);
       });
       timeline.appendChild(tick);
     });
+  }
+
+  function collectTimelineMessageElements() {
+    const userMessages = collectUserMessageElements()
+      .filter((node) => document.contains(node))
+      .filter((node) => isVisible(node));
+
+    if (userMessages.length > 0) {
+      return userMessages.slice(0, 100);
+    }
+
+    return uniqueElements([
+      ...activeAdapter.messageSelectors,
+      "[data-message-author-role]",
+      "user-query",
+      "model-response",
+      "[data-testid*='message']",
+      "[class*='message']"
+    ].flatMap((selector) => {
+      try {
+        return Array.from(document.querySelectorAll(selector));
+      } catch (error) {
+        return [];
+      }
+    }))
+      .filter((node) => !isInsideEditable(node))
+      .filter((node) => isVisible(node))
+      .filter((node) => normalizeComparableText(node.innerText || node.textContent || "").length > 1)
+      .slice(0, 100);
+  }
+
+  function createTimelineLabel(message, index) {
+    const text = normalizeComparableText(message.innerText || message.textContent || "");
+    return text ? createAnchorName(text) : `\u5bf9\u8bdd ${index + 1}`;
+  }
+
+  function scrollToConversationMessage(message) {
+    if (!message || !document.contains(message)) {
+      return;
+    }
+
+    message.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest"
+    });
+    brieflyHighlight(message);
   }
 
   function handleCatClick(event) {

@@ -84,6 +84,55 @@
   user-select: none;
 }
 
+.ask-anchor-cat-blink {
+  position: absolute;
+  z-index: 2;
+  top: 17px;
+  width: 12px;
+  height: 10px;
+  border-radius: 999px;
+  background: #050609;
+  opacity: 0;
+  pointer-events: none;
+  transform: scaleY(0.1);
+  transform-origin: center;
+  animation: ask-anchor-cat-blink-overlay 6.4s ease-in-out infinite;
+}
+
+.ask-anchor-cat-blink--left {
+  left: 20px;
+}
+
+.ask-anchor-cat-blink--right {
+  left: 45px;
+  animation-delay: 40ms;
+}
+
+.ask-anchor-cat-ear {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  width: 14px;
+  height: 16px;
+  border-radius: 70% 70% 24% 24%;
+  background: linear-gradient(145deg, #191b22, #050609);
+  pointer-events: none;
+  opacity: 0.78;
+  transform-origin: 50% 100%;
+  animation: ask-anchor-cat-ear-twitch 8.2s ease-in-out infinite;
+}
+
+.ask-anchor-cat-ear--left {
+  left: 17px;
+  transform: rotate(-20deg);
+}
+
+.ask-anchor-cat-ear--right {
+  right: 17px;
+  transform: rotate(20deg);
+  animation-delay: 120ms;
+}
+
 .ask-anchor-dock-button:hover,
 .ask-anchor-dock-button[aria-expanded="true"] {
   transform: translateY(-2px);
@@ -96,6 +145,11 @@
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-image {
   transform: translateX(-8px) rotate(-7deg) scale(1.04);
+}
+
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-blink,
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-ear {
+  display: none;
 }
 
 .ask-anchor-cat {
@@ -655,6 +709,36 @@
   }
 }
 
+@keyframes ask-anchor-cat-blink-overlay {
+  0%,
+  88%,
+  92%,
+  100% {
+    opacity: 0;
+    transform: scaleY(0.08);
+  }
+  89.4%,
+  90.4% {
+    opacity: 0.96;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes ask-anchor-cat-ear-twitch {
+  0%,
+  82%,
+  88%,
+  100% {
+    translate: 0 0;
+  }
+  84% {
+    translate: 0 -1px;
+  }
+  86% {
+    translate: 0 0;
+  }
+}
+
 @media (max-width: 560px) {
   #ask-anchor-anchor-dock {
     left: var(--ask-anchor-cat-left, auto);
@@ -671,7 +755,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ask-anchor-dock-button,
-  .ask-anchor-cat-image {
+  .ask-anchor-cat-image,
+  .ask-anchor-cat-blink,
+  .ask-anchor-cat-ear {
     animation: none !important;
   }
 }
