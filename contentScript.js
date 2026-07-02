@@ -399,6 +399,7 @@
           <span class="ask-anchor-paw__toe ask-anchor-paw__toe--one"></span>
           <span class="ask-anchor-paw__toe ask-anchor-paw__toe--two"></span>
           <span class="ask-anchor-paw__toe ask-anchor-paw__toe--three"></span>
+          <span class="ask-anchor-paw__toe ask-anchor-paw__toe--four"></span>
           <span class="ask-anchor-paw__pad"></span>
         </span>
         <span class="ask-anchor-anchor-name"></span>
@@ -680,7 +681,6 @@
       dock.style.removeProperty("--ask-anchor-cat-left");
       dock.style.removeProperty("--ask-anchor-cat-right");
       dock.style.removeProperty("--ask-anchor-cat-top");
-      dock.style.removeProperty("--ask-anchor-cat-walk");
       return;
     }
 
@@ -697,7 +697,6 @@
       dock.style.removeProperty("--ask-anchor-cat-left");
       dock.style.removeProperty("--ask-anchor-cat-right");
       dock.style.removeProperty("--ask-anchor-cat-top");
-      dock.style.removeProperty("--ask-anchor-cat-walk");
       return;
     }
 
@@ -712,7 +711,6 @@
     dock.style.setProperty("--ask-anchor-cat-left", `${left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
-    dock.style.setProperty("--ask-anchor-cat-walk", "0px");
   }
 
   function createCatPositionFromPointer(event, editorRect) {
@@ -748,7 +746,6 @@
     dock.style.setProperty("--ask-anchor-cat-left", `${position.left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${position.top}px`);
-    dock.style.setProperty("--ask-anchor-cat-walk", "0px");
   }
 
   function loadCatDockPosition() {
