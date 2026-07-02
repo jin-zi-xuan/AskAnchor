@@ -11,6 +11,7 @@
   const ANCHOR_NAME_LENGTH = 28;
   const SELECTION_CONTEXT_LENGTH = 42;
   const STORAGE_KEY_PREFIX = "ask-anchor:anchors:";
+  const CAT_POSITION_STORAGE_KEY = "ask-anchor:cat-position";
   const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   const PLATFORM_ADAPTERS = [
@@ -115,6 +116,8 @@
   let sentQuestionStabilizeTimer = null;
   let catAnimationFrame = null;
   let catDockTucked = false;
+  let catDockPosition = loadCatDockPosition();
+  let catDragState = null;
   let selectionTimer = null;
 
   document.addEventListener("selectionchange", () => {
@@ -353,6 +356,7 @@
       const catButton = dock.querySelector(".ask-anchor-dock-button");
       catButton.addEventListener("click", handleCatClick);
       catButton.addEventListener("dblclick", tuckCatDock);
+      catButton.addEventListener("pointerdown", startCatDrag);
       startCatMascotRenderer(dock);
     }
 
@@ -441,17 +445,18 @@
     const width = canvas.width;
     const height = canvas.height;
     const t = timestamp / 1000;
-    const bob = tucked ? 0 : Math.sin(t * 5.2) * 2;
-    const blink = Math.sin(t * 2.8) > 0.965 ? 0.22 : 1;
+    const bob = tucked ? 0 : Math.sin(t * 3.2) * 1.2;
+    const blink = Math.sin(t * 2.6) > 0.975 ? 0.18 : 1;
 
     context.clearRect(0, 0, width, height);
     context.save();
-    context.translate(width / 2, height / 2 + bob);
-    context.rotate(Math.sin(t * 1.1) * 0.035);
+    context.translate(width / 2, height / 2 + 4 + bob);
+    context.rotate(tucked ? -0.22 : Math.sin(t * 0.9) * 0.012);
+    context.scale(tucked ? 1.04 : 0.94, tucked ? 1.04 : 0.94);
 
     drawSoftShadow(context);
-    drawCatTail(context, t, tucked);
-    drawCatHead(context, t);
+    drawSittingCatBody(context, t, tucked);
+    drawCatHead(context, t, tucked);
     drawCatEyes(context, blink, tucked);
     drawCatWhiskers(context, tucked);
 
@@ -459,66 +464,99 @@
   }
 
   function drawSoftShadow(context) {
-    const shadow = context.createRadialGradient(0, 48, 4, 0, 48, 58);
-    shadow.addColorStop(0, "rgba(15, 23, 42, 0.24)");
+    const shadow = context.createRadialGradient(0, 50, 3, 0, 50, 42);
+    shadow.addColorStop(0, "rgba(15, 23, 42, 0.22)");
     shadow.addColorStop(1, "rgba(15, 23, 42, 0)");
     context.fillStyle = shadow;
     context.beginPath();
-    context.ellipse(0, 48, 45, 12, 0, 0, Math.PI * 2);
+    context.ellipse(0, 51, 35, 8, 0, 0, Math.PI * 2);
     context.fill();
   }
 
-  function drawCatHead(context, t) {
-    const furGradient = context.createRadialGradient(-18, -22, 8, 4, 8, 58);
+  function drawSittingCatBody(context, t, tucked) {
+    if (tucked) {
+      return;
+    }
+
+    const bodyGradient = context.createRadialGradient(-16, 12, 5, 3, 32, 48);
+    bodyGradient.addColorStop(0, "#20232c");
+    bodyGradient.addColorStop(0.55, "#101218");
+    bodyGradient.addColorStop(1, "#030407");
+
+    context.save();
+    context.fillStyle = bodyGradient;
+    context.shadowColor = "rgba(15, 23, 42, 0.24)";
+    context.shadowBlur = 12;
+    context.shadowOffsetY = 5;
+
+    context.beginPath();
+    context.moveTo(-28, 12);
+    context.bezierCurveTo(-34, 31, -26, 51, -4, 54);
+    context.bezierCurveTo(22, 57, 34, 40, 27, 16);
+    context.bezierCurveTo(20, -5, -19, -7, -28, 12);
+    context.fill();
+
+    context.shadowColor = "transparent";
+    context.strokeStyle = "#08090d";
+    context.lineWidth = 11;
+    context.lineCap = "round";
+    context.beginPath();
+    context.moveTo(23, 37);
+    context.bezierCurveTo(43, 36, 47, 12 + Math.sin(t * 1.5) * 2, 28, 8);
+    context.stroke();
+
+    context.fillStyle = "#08090d";
+    context.beginPath();
+    context.ellipse(-14, 51, 12, 6, -0.18, 0, Math.PI * 2);
+    context.ellipse(13, 51, 12, 6, 0.18, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = "rgba(255, 255, 255, 0.035)";
+    context.beginPath();
+    context.ellipse(-3, 27, 11, 19, -0.1, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+  }
+
+  function drawCatHead(context, t, tucked) {
+    const furGradient = context.createRadialGradient(-18, -24, 8, 2, -9, 54);
     furGradient.addColorStop(0, "#242735");
     furGradient.addColorStop(0.45, "#11131b");
     furGradient.addColorStop(1, "#030407");
 
     context.save();
     context.shadowColor = "rgba(15, 23, 42, 0.34)";
-    context.shadowBlur = 16;
-    context.shadowOffsetY = 8;
+    context.shadowBlur = 12;
+    context.shadowOffsetY = 5;
 
-    drawEar(context, -35, -34, -62, -78, -12, -50, furGradient);
-    drawEar(context, 35, -34, 60, -76, 13, -50, furGradient);
+    drawEar(context, -28, -32, -43, -67, -5, -45, furGradient);
+    drawEar(context, 24, -33, 42, -66, 4, -45, furGradient);
 
     context.fillStyle = furGradient;
     context.beginPath();
-    context.moveTo(-58, -4);
-    context.bezierCurveTo(-58, -38, -34, -60, 0, -60);
-    context.bezierCurveTo(36, -60, 60, -36, 58, 2);
-    context.bezierCurveTo(56, 38, 33, 55, 0, 56);
-    context.bezierCurveTo(-36, 56, -58, 34, -58, -4);
+    context.moveTo(-42, -13);
+    context.bezierCurveTo(-42, -42, -25, -56, 1, -56);
+    context.bezierCurveTo(28, -56, 45, -40, 43, -11);
+    context.bezierCurveTo(42, 15, 26, 30, 1, 31);
+    context.bezierCurveTo(-26, 32, -43, 13, -42, -13);
     context.fill();
 
     context.shadowColor = "transparent";
-    context.strokeStyle = "rgba(255, 255, 255, 0.08)";
-    context.lineWidth = 2;
+    context.strokeStyle = "rgba(255, 255, 255, 0.075)";
+    context.lineWidth = 1.5;
     context.beginPath();
-    context.moveTo(-46, -35);
-    context.bezierCurveTo(-20, -62, 29, -58, 47, -23);
+    context.moveTo(-31, -38);
+    context.bezierCurveTo(-11, -56, 23, -51, 34, -28);
     context.stroke();
 
-    const cheek = context.createRadialGradient(-30, 8, 2, -30, 8, 28);
+    const cheek = context.createRadialGradient(-23, -2, 2, -23, -2, 22);
     cheek.addColorStop(0, "rgba(255, 255, 255, 0.08)");
     cheek.addColorStop(1, "rgba(255, 255, 255, 0)");
     context.fillStyle = cheek;
     context.beginPath();
-    context.ellipse(-30, 8, 26, 18, -0.4, 0, Math.PI * 2);
+    context.ellipse(-23, -2, 20, 14, -0.4, 0, Math.PI * 2);
     context.fill();
-
     context.restore();
-
-    context.fillStyle = "#171923";
-    context.beginPath();
-    context.ellipse(-14, 48, 13, 8, 0.15, 0, Math.PI * 2);
-    context.ellipse(16, 48, 13, 8, -0.15, 0, Math.PI * 2);
-    context.fill();
-
-    context.fillStyle = "rgba(255, 255, 255, 0.04)";
-    context.beginPath();
-    context.ellipse(0, 25, 13, 21, Math.sin(t) * 0.04, 0, Math.PI * 2);
-    context.fill();
   }
 
   function drawEar(context, ax, ay, bx, by, cx, cy, fillStyle) {
@@ -541,23 +579,23 @@
   }
 
   function drawCatEyes(context, blink, tucked) {
-    const eyeY = tucked ? -12 : -10;
-    drawEye(context, -22, eyeY, blink);
-    drawEye(context, 22, eyeY, blink);
+    const eyeY = tucked ? -20 : -19;
+    drawEye(context, -15, eyeY, blink);
+    drawEye(context, 16, eyeY, blink);
 
     context.fillStyle = "#1f1517";
     context.beginPath();
-    context.moveTo(0, 10);
-    context.quadraticCurveTo(5, 11, 0, 15);
-    context.quadraticCurveTo(-5, 11, 0, 10);
+    context.moveTo(0, -3);
+    context.quadraticCurveTo(4, -2, 0, 1);
+    context.quadraticCurveTo(-4, -2, 0, -3);
     context.fill();
   }
 
   function drawEye(context, x, y, blink) {
-    const gold = context.createRadialGradient(x - 3, y - 4, 2, x, y, 18);
+    const gold = context.createRadialGradient(x - 2, y - 3, 2, x, y, 13);
     gold.addColorStop(0, "#ffe59a");
-    gold.addColorStop(0.55, "#d8a044");
-    gold.addColorStop(1, "#8b5c1f");
+    gold.addColorStop(0.58, "#e2ad45");
+    gold.addColorStop(1, "#94621f");
 
     context.save();
     context.translate(x, y);
@@ -565,17 +603,17 @@
 
     context.fillStyle = gold;
     context.beginPath();
-    context.ellipse(0, 0, 17, 21, 0, 0, Math.PI * 2);
+    context.ellipse(0, 0, 11, 8, -0.12, 0, Math.PI * 2);
     context.fill();
 
     context.fillStyle = "#05060a";
     context.beginPath();
-    context.ellipse(0, 0, 10, 14, 0, 0, Math.PI * 2);
+    context.ellipse(2, 0, 6, 7, -0.05, 0, Math.PI * 2);
     context.fill();
 
     context.fillStyle = "#ffffff";
     context.beginPath();
-    context.arc(5, -7, 3.2, 0, Math.PI * 2);
+    context.arc(5, -3, 2.1, 0, Math.PI * 2);
     context.fill();
 
     context.restore();
@@ -591,10 +629,10 @@
     context.lineCap = "round";
 
     [
-      [-12, 18, -48, 12],
-      [-11, 22, -50, 24],
-      [12, 18, 48, 12],
-      [11, 22, 50, 24]
+      [-8, -1, -37, -7],
+      [-8, 3, -38, 5],
+      [8, -1, 37, -7],
+      [8, 3, 38, 5]
     ].forEach(([x1, y1, x2, y2]) => {
       context.beginPath();
       context.moveTo(x1, y1);
@@ -603,25 +641,13 @@
     });
   }
 
-  function drawCatTail(context, t, tucked) {
-    if (tucked) {
-      return;
-    }
-
-    context.save();
-    context.strokeStyle = "#07080d";
-    context.lineWidth = 17;
-    context.lineCap = "round";
-    context.beginPath();
-    context.moveTo(-43, 33);
-    context.bezierCurveTo(-72, 22, -63, -23 + Math.sin(t * 1.8) * 4, -36, -4);
-    context.stroke();
-    context.restore();
-  }
-
   function handleCatClick(event) {
     event.preventDefault();
     event.stopPropagation();
+
+    if (catDragState?.moved) {
+      return;
+    }
 
     if (catDockTucked) {
       untuckCatDock();
@@ -638,6 +664,8 @@
     }
 
     catDockTucked = true;
+    catDockPosition = null;
+    saveCatDockPosition(null);
     closeAnchorList();
     updateCatDockPosition();
   }
@@ -645,6 +673,88 @@
   function untuckCatDock() {
     catDockTucked = false;
     updateCatDockPosition();
+  }
+
+  function startCatDrag(event) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const dock = document.getElementById(DOCK_ID);
+    if (!dock) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (catDockTucked) {
+      catDockTucked = false;
+      dock.classList.remove("is-tucked");
+    }
+
+    const rect = dock.getBoundingClientRect();
+    catDragState = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      moved: false
+    };
+
+    dock.classList.add("is-dragging");
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    window.addEventListener("pointermove", moveCatDrag, true);
+    window.addEventListener("pointerup", endCatDrag, true);
+    window.addEventListener("pointercancel", endCatDrag, true);
+  }
+
+  function moveCatDrag(event) {
+    if (!catDragState || event.pointerId !== catDragState.pointerId) {
+      return;
+    }
+
+    const dx = event.clientX - catDragState.startX;
+    const dy = event.clientY - catDragState.startY;
+    if (Math.hypot(dx, dy) > 4) {
+      catDragState.moved = true;
+    }
+
+    const dock = document.getElementById(DOCK_ID);
+    if (!dock) {
+      return;
+    }
+
+    const width = dock.offsetWidth || 58;
+    const height = dock.offsetHeight || 58;
+    const left = clamp(event.clientX - catDragState.offsetX, 4, window.innerWidth - width - 4);
+    const top = clamp(event.clientY - catDragState.offsetY, 4, window.innerHeight - height - 4);
+    catDockPosition = { left, top };
+    applyCatDockPosition(dock, catDockPosition);
+  }
+
+  function endCatDrag(event) {
+    if (!catDragState || event.pointerId !== catDragState.pointerId) {
+      return;
+    }
+
+    const dock = document.getElementById(DOCK_ID);
+    if (dock) {
+      dock.classList.remove("is-dragging");
+    }
+
+    if (catDragState.moved && catDockPosition) {
+      saveCatDockPosition(catDockPosition);
+      window.setTimeout(() => {
+        catDragState = null;
+      }, 0);
+    } else {
+      catDragState = null;
+    }
+
+    window.removeEventListener("pointermove", moveCatDrag, true);
+    window.removeEventListener("pointerup", endCatDrag, true);
+    window.removeEventListener("pointercancel", endCatDrag, true);
   }
 
   function toggleAnchorList() {
@@ -692,6 +802,16 @@
       return;
     }
 
+    if (catDockPosition) {
+      const safePosition = {
+        left: clamp(catDockPosition.left, 4, window.innerWidth - 58),
+        top: clamp(catDockPosition.top, 4, window.innerHeight - 58)
+      };
+      catDockPosition = safePosition;
+      applyCatDockPosition(dock, safePosition);
+      return;
+    }
+
     const editor = findPromptEditor();
     if (!editor) {
       dock.style.removeProperty("--ask-anchor-cat-left");
@@ -706,15 +826,52 @@
       return;
     }
 
-    const catWidth = 76;
-    const trackInset = Math.min(18, Math.max(6, rect.width * 0.04));
-    const left = Math.min(window.innerWidth - catWidth - 12, Math.max(12, rect.left + trackInset));
-    const top = Math.min(window.innerHeight - 86, Math.max(12, rect.top - 82));
-    const walkDistance = Math.max(18, Math.min(rect.width - catWidth - trackInset * 2, window.innerWidth - left - catWidth - 12));
+    const catWidth = 56;
+    const left = Math.min(window.innerWidth - catWidth - 8, Math.max(8, rect.right - catWidth - 12));
+    const top = Math.min(window.innerHeight - 64, Math.max(8, rect.top - 54));
     dock.style.setProperty("--ask-anchor-cat-left", `${left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
-    dock.style.setProperty("--ask-anchor-cat-walk", `${walkDistance}px`);
+    dock.style.setProperty("--ask-anchor-cat-walk", "0px");
+  }
+
+  function applyCatDockPosition(dock, position) {
+    dock.style.setProperty("--ask-anchor-cat-left", `${position.left}px`);
+    dock.style.setProperty("--ask-anchor-cat-right", "auto");
+    dock.style.setProperty("--ask-anchor-cat-top", `${position.top}px`);
+    dock.style.setProperty("--ask-anchor-cat-walk", "0px");
+  }
+
+  function loadCatDockPosition() {
+    try {
+      const raw = localStorage.getItem(CAT_POSITION_STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+      const value = JSON.parse(raw);
+      if (typeof value?.left !== "number" || typeof value?.top !== "number") {
+        return null;
+      }
+      return value;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function saveCatDockPosition(position) {
+    try {
+      if (!position) {
+        localStorage.removeItem(CAT_POSITION_STORAGE_KEY);
+        return;
+      }
+      localStorage.setItem(CAT_POSITION_STORAGE_KEY, JSON.stringify(position));
+    } catch (error) {
+      console.debug("[AskAnchor] Failed to save cat position:", error);
+    }
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
   }
 
   function returnToAnchor(id) {

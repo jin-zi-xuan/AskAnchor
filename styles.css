@@ -31,43 +31,53 @@
   justify-items: start;
   align-items: center;
   gap: 8px;
-  width: calc(var(--ask-anchor-cat-walk, 120px) + 76px);
-  min-width: 76px;
+  width: 58px;
+  min-width: 58px;
   font: 13px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
   transform: translateY(var(--ask-anchor-cat-shift, -50%));
   transition: left 220ms ease, right 220ms ease, top 220ms ease, transform 220ms ease, width 220ms ease;
+  touch-action: none;
+  user-select: none;
 }
 
 #ask-anchor-anchor-dock.is-tucked {
   left: auto;
-  right: -36px;
+  right: -30px;
   top: 50%;
-  width: 76px;
+  width: 58px;
   justify-items: end;
   --ask-anchor-cat-shift: -50%;
+}
+
+#ask-anchor-anchor-dock.is-dragging {
+  transition: none;
 }
 
 .ask-anchor-dock-button {
   position: relative;
   grid-column: 2;
   grid-row: 1;
-  width: 76px;
-  height: 76px;
+  width: 58px;
+  height: 58px;
   border: 0;
   background: transparent;
-  cursor: pointer;
+  cursor: grab;
   padding: 0;
-  animation: ask-anchor-cat-walk 7.4s cubic-bezier(0.45, 0, 0.2, 1) infinite;
-  filter: drop-shadow(0 12px 14px rgba(15, 23, 42, 0.2));
+  animation: none;
+  filter: drop-shadow(0 9px 10px rgba(15, 23, 42, 0.18));
   transform-origin: 50% 92%;
+}
+
+#ask-anchor-anchor-dock.is-dragging .ask-anchor-dock-button {
+  cursor: grabbing;
 }
 
 .ask-anchor-cat-canvas {
   position: absolute;
-  inset: -6px;
+  inset: -5px;
   display: block;
-  width: 88px;
-  height: 88px;
+  width: 68px;
+  height: 68px;
   transform: translateZ(0);
   pointer-events: none;
 }
@@ -79,11 +89,11 @@
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-dock-button {
   animation: none;
-  transform: translateX(-20px) rotate(-7deg);
+  transform: translateX(-14px) rotate(-7deg);
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-canvas {
-  transform: translateX(-12px) rotate(-7deg) scale(1.04);
+  transform: translateX(-8px) rotate(-7deg) scale(1.04);
 }
 
 .ask-anchor-cat {
