@@ -294,6 +294,9 @@
               <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--left"></span>
               <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--right"></span>
             </span>
+            <span class="ask-anchor-cat__body"></span>
+            <span class="ask-anchor-cat__foot ask-anchor-cat__foot--left"></span>
+            <span class="ask-anchor-cat__foot ask-anchor-cat__foot--right"></span>
             <span class="ask-anchor-cat__tail"></span>
           </span>
         </button>
@@ -427,6 +430,7 @@
       dock.style.removeProperty("--ask-anchor-cat-left");
       dock.style.removeProperty("--ask-anchor-cat-right");
       dock.style.removeProperty("--ask-anchor-cat-top");
+      dock.style.removeProperty("--ask-anchor-cat-walk");
       return;
     }
 
@@ -435,6 +439,7 @@
       dock.style.removeProperty("--ask-anchor-cat-left");
       dock.style.removeProperty("--ask-anchor-cat-right");
       dock.style.removeProperty("--ask-anchor-cat-top");
+      dock.style.removeProperty("--ask-anchor-cat-walk");
       return;
     }
 
@@ -443,11 +448,13 @@
       return;
     }
 
-    const left = Math.min(window.innerWidth - 96, Math.max(16, rect.left + rect.width * 0.12));
-    const top = Math.min(window.innerHeight - 92, Math.max(18, rect.top - 72));
+    const left = Math.min(window.innerWidth - 92, Math.max(16, rect.left + 8));
+    const top = Math.min(window.innerHeight - 96, Math.max(18, rect.top - 90));
+    const walkDistance = Math.max(24, Math.min(rect.width - 92, window.innerWidth - left - 92));
     dock.style.setProperty("--ask-anchor-cat-left", `${left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
+    dock.style.setProperty("--ask-anchor-cat-walk", `${walkDistance}px`);
   }
 
   function returnToAnchor(id) {
