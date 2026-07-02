@@ -3,6 +3,7 @@
   const DOCK_ID = "ask-anchor-anchor-dock";
   const LIST_ID = "ask-anchor-anchor-list";
   const TIMELINE_ID = "ask-anchor-anchor-timeline";
+  const TIMELINE_PREVIEW_ID = "ask-anchor-timeline-preview";
   const TOAST_ID = "ask-anchor-toast";
   const HIGHLIGHT_CLASS = "ask-anchor-highlight";
   const MARKER_CLASS = "ask-anchor-selection-marker";
@@ -429,8 +430,17 @@
 
   function renderConversationTimeline() {
     let timeline = document.getElementById(TIMELINE_ID);
+    if (hasNativeConversationTimeline()) {
+      hideTimelinePreview();
+      if (timeline) {
+        timeline.remove();
+      }
+      return;
+    }
+
     const messages = collectTimelineMessageElements();
     if (messages.length === 0) {
+      hideTimelinePreview();
       if (timeline) {
         timeline.remove();
       }
@@ -447,18 +457,45 @@
 
     timeline.innerHTML = "";
     messages.forEach((message, index) => {
-      const label = createTimelineLabel(message, index);
+      const preview = createTimelinePreview(message, index);
       const tick = document.createElement("button");
       tick.type = "button";
       tick.className = "ask-anchor-timeline-tick";
-      tick.setAttribute("aria-label", `\u5b9a\u4f4d\u5230\u5bf9\u8bdd ${index + 1}\uff1a${label}`);
-      tick.title = label;
+      tick.setAttribute("aria-label", `\u5b9a\u4f4d\u5230\u5bf9\u8bdd ${index + 1}\uff1a${preview.title}`);
       tick.addEventListener("click", (event) => {
         event.stopPropagation();
         closeAnchorList();
         scrollToConversationMessage(message);
       });
+      tick.addEventListener("mouseenter", () => showTimelinePreview(tick, preview));
+      tick.addEventListener("focus", () => showTimelinePreview(tick, preview));
+      tick.addEventListener("mouseleave", hideTimelinePreview);
+      tick.addEventListener("blur", hideTimelinePreview);
       timeline.appendChild(tick);
+    });
+  }
+
+  function hasNativeConversationTimeline() {
+    if (activeAdapter.name === "chatgpt") {
+      return true;
+    }
+
+    const nativeSelectors = [
+      "[data-testid*='timeline']",
+      "[aria-label*='timeline' i]",
+      "[aria-label*='\u65f6\u95f4\u8f74']",
+      "[class*='timeline' i]",
+      "[class*='conversation-nav' i]",
+      "[class*='scroll-spy' i]"
+    ];
+
+    return nativeSelectors.some((selector) => {
+      try {
+        return Array.from(document.querySelectorAll(selector))
+          .some((node) => !node.closest(`#${DOCK_ID}, #${TIMELINE_ID}, #${TIMELINE_PREVIEW_ID}`) && isVisible(node));
+      } catch (error) {
+        return false;
+      }
     });
   }
 
@@ -491,9 +528,48 @@
       .slice(0, 100);
   }
 
-  function createTimelineLabel(message, index) {
+  function createTimelinePreview(message, index) {
     const text = normalizeComparableText(message.innerText || message.textContent || "");
-    return text ? createAnchorName(text) : `\u5bf9\u8bdd ${index + 1}`;
+    const fallbackTitle = `\u5bf9\u8bdd ${index + 1}`;
+    const title = text ? createAnchorName(text) : fallbackTitle;
+    const excerpt = text.length > 88 ? `${text.slice(0, 88)}...` : text;
+    return {
+      title,
+      excerpt: excerpt || fallbackTitle
+    };
+  }
+
+  function showTimelinePreview(tick, preview) {
+    let previewEl = document.getElementById(TIMELINE_PREVIEW_ID);
+    if (!previewEl) {
+      previewEl = document.createElement("div");
+      previewEl.id = TIMELINE_PREVIEW_ID;
+      previewEl.innerHTML = `
+        <div class="ask-anchor-timeline-preview__title"></div>
+        <div class="ask-anchor-timeline-preview__excerpt"></div>
+      `;
+      document.documentElement.appendChild(previewEl);
+    }
+
+    previewEl.querySelector(".ask-anchor-timeline-preview__title").textContent = preview.title;
+    previewEl.querySelector(".ask-anchor-timeline-preview__excerpt").textContent = preview.excerpt;
+
+    const rect = tick.getBoundingClientRect();
+    const width = Math.min(420, window.innerWidth - 32);
+    const left = Math.max(16, Math.min(window.innerWidth - width - 16, rect.left - width - 18));
+    const top = Math.max(16, Math.min(window.innerHeight - 120, rect.top - 42));
+
+    previewEl.style.width = `${width}px`;
+    previewEl.style.left = `${left}px`;
+    previewEl.style.top = `${top}px`;
+    previewEl.classList.add("is-visible");
+  }
+
+  function hideTimelinePreview() {
+    const previewEl = document.getElementById(TIMELINE_PREVIEW_ID);
+    if (previewEl) {
+      previewEl.classList.remove("is-visible");
+    }
   }
 
   function scrollToConversationMessage(message) {

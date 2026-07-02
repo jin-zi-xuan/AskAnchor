@@ -205,6 +205,51 @@
   opacity: 1;
 }
 
+#ask-anchor-timeline-preview {
+  position: fixed;
+  z-index: 2147483646;
+  display: grid;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+  color: #111827;
+  font: 14px/1.42 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
+  opacity: 0;
+  padding: 13px 14px 14px;
+  pointer-events: none;
+  transform: translateY(4px) scale(0.98);
+  transition: opacity 140ms ease, transform 140ms ease;
+  backdrop-filter: blur(18px) saturate(1.35);
+}
+
+#ask-anchor-timeline-preview.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.ask-anchor-timeline-preview__title {
+  overflow: hidden;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-anchor-timeline-preview__excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .ask-anchor-anchor-list[hidden] {
   display: none !important;
 }
