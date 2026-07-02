@@ -12,7 +12,7 @@
   const SELECTION_CONTEXT_LENGTH = 42;
   const STORAGE_KEY_PREFIX = "ask-anchor:anchors:";
   const CAT_POSITION_STORAGE_KEY = "ask-anchor:cat-position";
-  const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const CAT_IMAGE_URL = chrome.runtime.getURL("assets/askanchor-cat-perch.png");
 
   const PLATFORM_ADAPTERS = [
     {
@@ -114,7 +114,6 @@
   let pendingFollowUpTimer = null;
   let pendingFollowUpPollTimer = null;
   let sentQuestionStabilizeTimer = null;
-  let catAnimationFrame = null;
   let catDockTucked = false;
   let catDockPosition = loadCatDockPosition();
   let catDragState = null;
@@ -346,18 +345,20 @@
       dock.id = DOCK_ID;
       dock.innerHTML = `
         <button class="ask-anchor-dock-button" type="button" aria-label="AskAnchor" aria-expanded="false">
-          <canvas class="ask-anchor-cat-canvas" width="152" height="152" aria-hidden="true"></canvas>
+          <img class="ask-anchor-cat-image" alt="" aria-hidden="true">
         </button>
         <div id="${TIMELINE_ID}" class="ask-anchor-anchor-timeline" aria-label="AskAnchor timeline"></div>
         <div id="${LIST_ID}" class="ask-anchor-anchor-list" hidden></div>
       `;
       document.documentElement.appendChild(dock);
 
+      const catImage = dock.querySelector(".ask-anchor-cat-image");
+      catImage.src = CAT_IMAGE_URL;
+
       const catButton = dock.querySelector(".ask-anchor-dock-button");
       catButton.addEventListener("click", handleCatClick);
       catButton.addEventListener("dblclick", tuckCatDock);
       catButton.addEventListener("pointerdown", startCatDrag);
-      startCatMascotRenderer(dock);
     }
 
     const button = dock.querySelector(".ask-anchor-dock-button");
@@ -409,230 +410,6 @@
     if (dock) {
       dock.remove();
     }
-    stopCatMascotRenderer();
-  }
-
-  function startCatMascotRenderer(dock) {
-    stopCatMascotRenderer();
-
-    const canvas = dock.querySelector(".ask-anchor-cat-canvas");
-    const context = canvas?.getContext?.("2d");
-    if (!canvas || !context) {
-      return;
-    }
-
-    const render = (timestamp) => {
-      if (!document.contains(canvas)) {
-        stopCatMascotRenderer();
-        return;
-      }
-
-      drawCatMascot(context, canvas, reducedMotionQuery.matches ? 0 : timestamp, catDockTucked);
-      catAnimationFrame = window.requestAnimationFrame(render);
-    };
-
-    catAnimationFrame = window.requestAnimationFrame(render);
-  }
-
-  function stopCatMascotRenderer() {
-    if (catAnimationFrame) {
-      window.cancelAnimationFrame(catAnimationFrame);
-      catAnimationFrame = null;
-    }
-  }
-
-  function drawCatMascot(context, canvas, timestamp, tucked) {
-    const width = canvas.width;
-    const height = canvas.height;
-    const t = timestamp / 1000;
-    const bob = tucked ? 0 : Math.sin(t * 3.2) * 1.2;
-    const blink = Math.sin(t * 2.6) > 0.975 ? 0.18 : 1;
-
-    context.clearRect(0, 0, width, height);
-    context.save();
-    context.translate(width / 2, height / 2 + 14 + bob);
-    context.rotate(tucked ? -0.22 : Math.sin(t * 0.9) * 0.012);
-    context.scale(tucked ? 1.04 : 0.94, tucked ? 1.04 : 0.94);
-
-    drawSoftShadow(context);
-    drawCatHead(context, t, tucked);
-    drawCatEyes(context, blink, tucked);
-    drawCatWhiskers(context, tucked);
-    drawRestingPaws(context, t, tucked);
-
-    context.restore();
-  }
-
-  function drawSoftShadow(context) {
-    const shadow = context.createRadialGradient(0, 32, 3, 0, 32, 34);
-    shadow.addColorStop(0, "rgba(15, 23, 42, 0.18)");
-    shadow.addColorStop(1, "rgba(15, 23, 42, 0)");
-    context.fillStyle = shadow;
-    context.beginPath();
-    context.ellipse(0, 32, 32, 7, 0, 0, Math.PI * 2);
-    context.fill();
-  }
-
-  function drawCatHead(context, t, tucked) {
-    const furGradient = context.createRadialGradient(-18, -24, 8, 2, -9, 54);
-    furGradient.addColorStop(0, "#242735");
-    furGradient.addColorStop(0.45, "#11131b");
-    furGradient.addColorStop(1, "#030407");
-
-    context.save();
-    context.shadowColor = "rgba(15, 23, 42, 0.34)";
-    context.shadowBlur = 12;
-    context.shadowOffsetY = 5;
-
-    drawEar(context, -28, -30, -43, -64, -5, -43, furGradient);
-    drawEar(context, 24, -31, 42, -63, 4, -43, furGradient);
-
-    context.fillStyle = furGradient;
-    context.beginPath();
-    context.moveTo(-42, -12);
-    context.bezierCurveTo(-42, -40, -25, -54, 1, -54);
-    context.bezierCurveTo(28, -54, 45, -38, 43, -10);
-    context.bezierCurveTo(42, 14, 26, 29, 1, 30);
-    context.bezierCurveTo(-26, 31, -43, 12, -42, -12);
-    context.fill();
-
-    context.shadowColor = "transparent";
-    context.strokeStyle = "rgba(255, 255, 255, 0.075)";
-    context.lineWidth = 1.5;
-    context.beginPath();
-    context.moveTo(-31, -38);
-    context.bezierCurveTo(-11, -56, 23, -51, 34, -28);
-    context.stroke();
-
-    const cheek = context.createRadialGradient(-23, -2, 2, -23, -2, 22);
-    cheek.addColorStop(0, "rgba(255, 255, 255, 0.08)");
-    cheek.addColorStop(1, "rgba(255, 255, 255, 0)");
-    context.fillStyle = cheek;
-    context.beginPath();
-    context.ellipse(-23, -2, 20, 14, -0.4, 0, Math.PI * 2);
-    context.fill();
-    context.restore();
-  }
-
-  function drawEar(context, ax, ay, bx, by, cx, cy, fillStyle) {
-    context.fillStyle = fillStyle;
-    context.beginPath();
-    context.moveTo(ax, ay);
-    context.quadraticCurveTo(bx, by, cx, cy);
-    context.quadraticCurveTo(ax + (cx - ax) * 0.26, ay - 4, ax, ay);
-    context.fill();
-
-    const inner = context.createLinearGradient(bx, by, cx, cy);
-    inner.addColorStop(0, "rgba(204, 137, 103, 0.84)");
-    inner.addColorStop(1, "rgba(74, 45, 47, 0.6)");
-    context.fillStyle = inner;
-    context.beginPath();
-    context.moveTo(ax * 0.88, ay - 3);
-    context.quadraticCurveTo(bx * 0.9, by + 14, cx * 0.9, cy + 8);
-    context.quadraticCurveTo(ax * 0.9 + (cx - ax) * 0.16, ay - 1, ax * 0.88, ay - 3);
-    context.fill();
-  }
-
-  function drawCatEyes(context, blink, tucked) {
-    const eyeY = tucked ? -20 : -19;
-    drawEye(context, -15, eyeY, blink);
-    drawEye(context, 16, eyeY, blink);
-
-    context.fillStyle = "#1f1517";
-    context.beginPath();
-    context.moveTo(0, -3);
-    context.quadraticCurveTo(4, -2, 0, 1);
-    context.quadraticCurveTo(-4, -2, 0, -3);
-    context.fill();
-  }
-
-  function drawEye(context, x, y, blink) {
-    const gold = context.createRadialGradient(x - 2, y - 3, 2, x, y, 13);
-    gold.addColorStop(0, "#ffe59a");
-    gold.addColorStop(0.58, "#e2ad45");
-    gold.addColorStop(1, "#94621f");
-
-    context.save();
-    context.translate(x, y);
-    context.scale(1, blink);
-
-    context.fillStyle = gold;
-    context.beginPath();
-    context.ellipse(0, 0, 11, 8, -0.12, 0, Math.PI * 2);
-    context.fill();
-
-    context.fillStyle = "#05060a";
-    context.beginPath();
-    context.ellipse(2, 0, 6, 7, -0.05, 0, Math.PI * 2);
-    context.fill();
-
-    context.fillStyle = "#ffffff";
-    context.beginPath();
-    context.arc(5, -3, 2.1, 0, Math.PI * 2);
-    context.fill();
-
-    context.restore();
-  }
-
-  function drawCatWhiskers(context, tucked) {
-    if (tucked) {
-      return;
-    }
-
-    context.strokeStyle = "rgba(12, 14, 20, 0.72)";
-    context.lineWidth = 1.5;
-    context.lineCap = "round";
-
-    [
-      [-8, -1, -37, -7],
-      [-8, 3, -38, 5],
-      [8, -1, 37, -7],
-      [8, 3, 38, 5]
-    ].forEach(([x1, y1, x2, y2]) => {
-      context.beginPath();
-      context.moveTo(x1, y1);
-      context.quadraticCurveTo((x1 + x2) / 2, y1 - 4, x2, y2);
-      context.stroke();
-    });
-  }
-
-  function drawRestingPaws(context, t, tucked) {
-    if (tucked) {
-      return;
-    }
-
-    const pawGradient = context.createRadialGradient(-20, 28, 3, -18, 34, 16);
-    pawGradient.addColorStop(0, "#1b1e27");
-    pawGradient.addColorStop(1, "#05060a");
-
-    context.save();
-    context.fillStyle = pawGradient;
-    context.shadowColor = "rgba(15, 23, 42, 0.18)";
-    context.shadowBlur = 7;
-    context.shadowOffsetY = 3;
-
-    drawPaw(context, -20, 32 + Math.sin(t * 1.7) * 0.6, -0.08);
-    drawPaw(context, 20, 32 + Math.sin(t * 1.7 + 0.6) * 0.5, 0.08);
-    context.restore();
-  }
-
-  function drawPaw(context, x, y, rotation) {
-    context.save();
-    context.translate(x, y);
-    context.rotate(rotation);
-    context.beginPath();
-    context.ellipse(0, 0, 12, 9, 0, 0, Math.PI * 2);
-    context.fill();
-
-    context.strokeStyle = "rgba(255, 255, 255, 0.08)";
-    context.lineWidth = 1;
-    [-4, 0, 4].forEach((offset) => {
-      context.beginPath();
-      context.moveTo(offset, -5);
-      context.quadraticCurveTo(offset + 1, -1, offset, 4);
-      context.stroke();
-    });
-    context.restore();
   }
 
   function handleCatClick(event) {
@@ -728,8 +505,8 @@
       return;
     }
 
-    const width = dock.offsetWidth || 58;
-    const height = dock.offsetHeight || 58;
+    const width = dock.offsetWidth || 76;
+    const height = dock.offsetHeight || 44;
     const left = clamp(event.clientX - catDragState.offsetX, 4, window.innerWidth - width - 4);
     const top = clamp(event.clientY - catDragState.offsetY, 4, window.innerHeight - height - 4);
     catDockPosition = { mode: "free", left, top };
@@ -827,9 +604,9 @@
       return;
     }
 
-    const catWidth = 56;
+    const catWidth = 76;
     const left = Math.min(window.innerWidth - catWidth - 8, Math.max(8, rect.right - catWidth - 96));
-    const top = Math.min(window.innerHeight - 64, Math.max(8, rect.top - 45));
+    const top = Math.min(window.innerHeight - 50, Math.max(8, rect.top - 36));
     dock.style.setProperty("--ask-anchor-cat-left", `${left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
@@ -837,11 +614,11 @@
   }
 
   function createCatPositionFromPointer(event, editorRect) {
-    const catWidth = 58;
+    const catWidth = 76;
     const x = clamp(event.clientX - catDragState.offsetX + catWidth / 2, editorRect.left + 28, editorRect.right - 28);
     const ratio = editorRect.width > 0 ? (x - editorRect.left) / editorRect.width : 0.82;
-    const rawOffsetY = event.clientY - catDragState.offsetY - (editorRect.top - 45);
-    const offsetY = clamp(rawOffsetY, -8, 8);
+    const rawOffsetY = event.clientY - catDragState.offsetY - (editorRect.top - 36);
+    const offsetY = clamp(rawOffsetY, -6, 6);
 
     return {
       mode: "editor-edge",
@@ -852,16 +629,16 @@
 
   function getCatDockViewportPosition(position, editorRect) {
     if (position?.mode === "editor-edge" && editorRect && editorRect.width > 0 && editorRect.height > 0) {
-      const catWidth = 58;
+      const catWidth = 76;
       const ratio = clamp(position.ratio ?? 0.82, 0.08, 0.92);
       const left = clamp(editorRect.left + editorRect.width * ratio - catWidth / 2, 4, window.innerWidth - catWidth - 4);
-      const top = clamp(editorRect.top - 45 + (position.offsetY || 0), 4, window.innerHeight - catWidth - 4);
+      const top = clamp(editorRect.top - 36 + (position.offsetY || 0), 4, window.innerHeight - 44 - 4);
       return { left, top };
     }
 
     return {
-      left: clamp(position?.left ?? window.innerWidth - 76, 4, window.innerWidth - 58),
-      top: clamp(position?.top ?? window.innerHeight - 120, 4, window.innerHeight - 58)
+      left: clamp(position?.left ?? window.innerWidth - 96, 4, window.innerWidth - 76),
+      top: clamp(position?.top ?? window.innerHeight - 120, 4, window.innerHeight - 44)
     };
   }
 

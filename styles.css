@@ -31,8 +31,8 @@
   justify-items: start;
   align-items: center;
   gap: 8px;
-  width: 58px;
-  min-width: 58px;
+  width: 76px;
+  min-width: 76px;
   font: 13px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
   transform: translateY(var(--ask-anchor-cat-shift, -50%));
   transition: left 220ms ease, right 220ms ease, top 220ms ease, transform 220ms ease, width 220ms ease;
@@ -42,9 +42,9 @@
 
 #ask-anchor-anchor-dock.is-tucked {
   left: auto;
-  right: -30px;
+  right: -42px;
   top: 50%;
-  width: 58px;
+  width: 76px;
   justify-items: end;
   --ask-anchor-cat-shift: -50%;
 }
@@ -57,14 +57,14 @@
   position: relative;
   grid-column: 2;
   grid-row: 1;
-  width: 58px;
-  height: 50px;
+  width: 76px;
+  height: 44px;
   border: 0;
   background: transparent;
   cursor: grab;
   padding: 0;
   animation: none;
-  filter: drop-shadow(0 9px 10px rgba(15, 23, 42, 0.18));
+  filter: drop-shadow(0 7px 8px rgba(15, 23, 42, 0.16));
   transform-origin: 50% 92%;
 }
 
@@ -72,15 +72,16 @@
   cursor: grabbing;
 }
 
-.ask-anchor-cat-canvas {
+.ask-anchor-cat-image {
   position: absolute;
-  left: -7px;
-  top: -18px;
+  left: 0;
+  bottom: -2px;
   display: block;
-  width: 72px;
-  height: 72px;
+  width: 76px;
+  height: auto;
   transform: translateZ(0);
   pointer-events: none;
+  user-select: none;
 }
 
 .ask-anchor-dock-button:hover,
@@ -93,7 +94,7 @@
   transform: translateX(-14px) rotate(-7deg);
 }
 
-#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-canvas {
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-image {
   transform: translateX(-8px) rotate(-7deg) scale(1.04);
 }
 
@@ -672,7 +673,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ask-anchor-dock-button,
-  .ask-anchor-cat-canvas {
+  .ask-anchor-cat-image {
     animation: none !important;
   }
 }
