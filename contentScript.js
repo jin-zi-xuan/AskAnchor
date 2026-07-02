@@ -2,6 +2,7 @@
   const BUTTON_ID = "ask-anchor-explain-button";
   const DOCK_ID = "ask-anchor-anchor-dock";
   const LIST_ID = "ask-anchor-anchor-list";
+  const TIMELINE_ID = "ask-anchor-anchor-timeline";
   const TOAST_ID = "ask-anchor-toast";
   const HIGHLIGHT_CLASS = "ask-anchor-highlight";
   const MARKER_CLASS = "ask-anchor-selection-marker";
@@ -104,6 +105,7 @@
   let currentSelection = null;
   let lastValidSelection = null;
   let anchors = [];
+  let activeAnchorId = null;
   let pendingFollowUp = null;
   let pendingFollowUpTimer = null;
   let pendingFollowUpPollTimer = null;
@@ -295,6 +297,7 @@
             <span class="ask-anchor-cat__tail"></span>
           </span>
         </button>
+        <div id="${TIMELINE_ID}" class="ask-anchor-anchor-timeline" aria-label="AskAnchor timeline"></div>
         <div id="${LIST_ID}" class="ask-anchor-anchor-list" hidden></div>
       `;
       document.documentElement.appendChild(dock);
@@ -306,13 +309,27 @@
 
     const button = dock.querySelector(".ask-anchor-dock-button");
     const list = dock.querySelector(`#${LIST_ID}`);
+    const timeline = dock.querySelector(`#${TIMELINE_ID}`);
     button.title = `AskAnchor - ${anchors.length} \u4e2a\u951a\u70b9`;
     list.innerHTML = "";
+    timeline.innerHTML = "";
 
     anchors.forEach((anchor, index) => {
+      const tick = document.createElement("button");
+      tick.type = "button";
+      tick.className = `ask-anchor-timeline-tick${anchor.id === activeAnchorId ? " is-active" : ""}`;
+      tick.setAttribute("aria-label", `\u8fd4\u56de\u951a\u70b9 ${index + 1}\uff1a${anchor.name}`);
+      tick.title = anchor.name;
+      tick.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeAnchorList();
+        returnToAnchor(anchor.id);
+      });
+      timeline.appendChild(tick);
+
       const item = document.createElement("button");
       item.type = "button";
-      item.className = "ask-anchor-anchor-item";
+      item.className = `ask-anchor-anchor-item${anchor.id === activeAnchorId ? " is-active" : ""}`;
       item.setAttribute("aria-label", `\u8fd4\u56de\u951a\u70b9 ${index + 1}\uff1a${anchor.name}`);
       item.innerHTML = `
         <span class="ask-anchor-anchor-index" aria-hidden="true">
@@ -438,6 +455,9 @@
     if (!anchor) {
       return;
     }
+
+    activeAnchorId = id;
+    renderAnchorDock();
 
     const marker = anchor.marker && document.contains(anchor.marker) ? anchor.marker : null;
     const target = anchor.element && document.contains(anchor.element) ? anchor.element : null;
