@@ -5,8 +5,6 @@
   const TOAST_ID = "ask-anchor-toast";
   const HIGHLIGHT_CLASS = "ask-anchor-highlight";
   const MARKER_CLASS = "ask-anchor-selection-marker";
-  const MAX_CONTEXT_MESSAGES = 3;
-  const MAX_CONTEXT_TEXT_LENGTH = 900;
   const MIN_SELECTION_LENGTH = 2;
   const MAX_ANCHORS = 30;
   const ANCHOR_NAME_LENGTH = 28;
@@ -221,7 +219,7 @@
     const knownUserElements = collectUserMessageElements();
     const knownUserNodes = new Set(knownUserElements);
     const knownUserTexts = new Set(knownUserElements.map((node) => normalizeComparableText(node.innerText || node.textContent || "")));
-    const prompt = buildFollowUpPrompt(selectionSnapshot.text, extractConversationContext(selectionSnapshot.messageElement));
+    const prompt = buildFollowUpPrompt(selectionSnapshot.text);
     const filled = await fillCurrentAiInput(prompt);
 
     hideExplainButton();
@@ -584,21 +582,14 @@
     sentQuestionStabilizeTimer = window.setInterval(keepInView, 450);
   }
 
-  function buildFollowUpPrompt(selectedText, context) {
-    const contextText = context
-      .map((item) => `${item.role}: ${item.text}`)
-      .join("\n\n");
-
+  function buildFollowUpPrompt(selectedText) {
     return [
-      "\u8bf7\u7ed3\u5408\u4e0a\u6587\uff0c\u89e3\u91ca\u6211\u9009\u4e2d\u7684\u8fd9\u6bb5\u5185\u5bb9\u3002",
+      "\u8bf7\u89e3\u91ca\u6211\u5728\u4e0a\u6587\u4e2d\u9009\u4e2d\u7684\u8fd9\u6bb5\u5185\u5bb9\uff1a",
       "",
       "\u3010\u9009\u4e2d\u5185\u5bb9\u3011",
       selectedText,
       "",
-      "\u3010\u8fd1\u671f\u5bf9\u8bdd\u4e0a\u4e0b\u6587\u3011",
-      contextText || "\u65e0",
-      "",
-      "\u8bf7\u8bf4\u660e\u5b83\u7684\u610f\u601d\u3001\u80cc\u540e\u903b\u8f91\u3001\u4e0e\u4e0a\u4e0b\u6587\u7684\u5173\u7cfb\uff0c\u5e76\u5c3d\u91cf\u7b80\u6d01\u3002"
+      "\u8bf7\u8bf4\u660e\u5b83\u7684\u610f\u601d\u3001\u548c\u4e0a\u6587\u7684\u5173\u7cfb\uff0c\u4ee5\u53ca\u6211\u5e94\u8be5\u5982\u4f55\u7406\u89e3\u5b83\u3002"
     ].join("\n");
   }
 
@@ -828,44 +819,6 @@
     return null;
   }
 
-  function extractConversationContext(anchorElement) {
-    const messages = extractMessagesFromAdapter();
-    const fallbackText = anchorElement
-      ? cleanText(anchorElement.innerText || anchorElement.textContent || "")
-      : "";
-
-    if (messages.length === 0 && fallbackText) {
-      messages.push({ role: "assistant", text: fallbackText });
-    }
-
-    return messages
-      .filter((message) => message.text)
-      .slice(-MAX_CONTEXT_MESSAGES);
-  }
-
-  function extractMessagesFromAdapter() {
-    const platformMessages = collectMessages(activeAdapter);
-    if (platformMessages.length > 0) {
-      return platformMessages;
-    }
-
-    return collectMessages({
-      messageSelectors: [
-        "[data-message-author-role]",
-        "user-query",
-        "model-response",
-        "[data-testid*='message']",
-        "[data-testid*='answer']",
-        "[data-testid*='query']",
-        "[class*='message']",
-        "[class*='answer']",
-        "[class*='question']",
-        "[class*='response']"
-      ],
-      roleFromNode: (node) => inferRoleFromNode(node)
-    });
-  }
-
   function collectUserMessageElements() {
     const selectors = [
       ...activeAdapter.userSelectors,
@@ -889,22 +842,7 @@
       }
     }))
       .filter((node) => !isInsideEditable(node))
-      .filter((node) => cleanText(node.innerText || node.textContent || "").length > 1);
-  }
-
-  function collectMessages(adapter) {
-    const selectors = adapter.messageSelectors || [];
-    const nodes = uniqueElements(selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector))));
-
-    return nodes
-      .filter((node) => !isInsideEditable(node))
-      .map((node) => ({
-        role: normalizeRole(adapter.roleFromNode ? adapter.roleFromNode(node) : inferRoleFromNode(node)),
-        text: cleanText(node.innerText || node.textContent || "")
-      }))
-      .filter((message) => message.text && message.text.length > 1)
-      .filter((message, index, list) => list.findIndex((item) => item.text === message.text) === index)
-      .slice(-MAX_CONTEXT_MESSAGES);
+      .filter((node) => normalizeComparableText(node.innerText || node.textContent || "").length > 1);
   }
 
   function getActiveAdapter() {
@@ -937,10 +875,6 @@
     }
 
     return "assistant";
-  }
-
-  function normalizeRole(role) {
-    return role === "user" ? "user" : "assistant";
   }
 
   function isInsideUserMessage(element) {
@@ -1012,13 +946,6 @@
 
     const rects = Array.from(range.getClientRects());
     return rects.find((item) => item.width > 0 && item.height > 0) || null;
-  }
-
-  function cleanText(text) {
-    return String(text || "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, MAX_CONTEXT_TEXT_LENGTH);
   }
 
   function normalizeComparableText(text) {
