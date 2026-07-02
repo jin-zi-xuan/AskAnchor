@@ -42,7 +42,7 @@
 
 #ask-anchor-anchor-dock.is-tucked {
   left: auto;
-  right: -50px;
+  right: -28px;
   top: 50%;
   width: 76px;
   justify-items: end;
@@ -144,13 +144,13 @@
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-dock-button {
   animation: none;
-  transform: translateX(-10px);
+  transform: translateX(-4px);
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-image {
   animation: none;
-  transform: translate(10px, -10px) rotate(90deg) scale(1.04);
-  transform-origin: 48% 48%;
+  transform: translate(-8px, -12px) rotate(90deg) scale(1.04);
+  transform-origin: 50% 48%;
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-blink,
