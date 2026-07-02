@@ -80,6 +80,8 @@
   width: 76px;
   height: auto;
   transform: translateZ(0);
+  transform-origin: 50% 22%;
+  animation: ask-anchor-cat-ear-wiggle 7.8s ease-in-out infinite;
   pointer-events: none;
   user-select: none;
 }
@@ -87,50 +89,25 @@
 .ask-anchor-cat-blink {
   position: absolute;
   z-index: 2;
-  top: 17px;
-  width: 12px;
-  height: 10px;
+  top: 18px;
+  width: 11px;
+  height: 12px;
   border-radius: 999px;
   background: #050609;
   opacity: 0;
   pointer-events: none;
   transform: scaleY(0.1);
   transform-origin: center;
-  animation: ask-anchor-cat-blink-overlay 6.4s ease-in-out infinite;
+  animation: ask-anchor-cat-blink-overlay 3.9s ease-in-out infinite;
 }
 
 .ask-anchor-cat-blink--left {
-  left: 20px;
+  left: 23px;
 }
 
 .ask-anchor-cat-blink--right {
-  left: 45px;
+  left: 43px;
   animation-delay: 40ms;
-}
-
-.ask-anchor-cat-ear {
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  width: 14px;
-  height: 16px;
-  border-radius: 70% 70% 24% 24%;
-  background: linear-gradient(145deg, #191b22, #050609);
-  pointer-events: none;
-  opacity: 0.78;
-  transform-origin: 50% 100%;
-  animation: ask-anchor-cat-ear-twitch 8.2s ease-in-out infinite;
-}
-
-.ask-anchor-cat-ear--left {
-  left: 17px;
-  transform: rotate(-20deg);
-}
-
-.ask-anchor-cat-ear--right {
-  right: 17px;
-  transform: rotate(20deg);
-  animation-delay: 120ms;
 }
 
 .ask-anchor-dock-button:hover,
@@ -144,11 +121,11 @@
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-image {
+  animation: none;
   transform: translateX(-8px) rotate(-7deg) scale(1.04);
 }
 
-#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-blink,
-#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-ear {
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-blink {
   display: none;
 }
 
@@ -441,7 +418,7 @@
   display: grid;
   align-content: center;
   gap: 9px;
-  width: 12px;
+  width: 16px;
   min-height: 140px;
   max-height: min(520px, calc(100vh - 112px));
   overflow: hidden;
@@ -451,26 +428,31 @@
 }
 
 .ask-anchor-timeline-tick {
-  width: 9px;
+  display: block;
+  width: 10px;
+  min-width: 10px;
+  max-width: 10px;
   height: 2px;
+  min-height: 2px;
   border: 0;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.58);
   cursor: pointer;
   padding: 0;
-  transition: background 140ms ease, transform 140ms ease, width 140ms ease;
+  appearance: none;
+  box-shadow: none;
+  line-height: 0;
+  transition: background 140ms ease, opacity 140ms ease;
 }
 
 .ask-anchor-timeline-tick:first-child,
 .ask-anchor-timeline-tick.is-active {
-  width: 10px;
   background: rgba(75, 85, 99, 0.9);
 }
 
 .ask-anchor-timeline-tick:hover {
-  width: 12px;
   background: rgba(17, 24, 39, 0.86);
-  transform: translateX(-2px);
+  opacity: 1;
 }
 
 .ask-anchor-anchor-list[hidden] {
@@ -516,38 +498,38 @@
 .ask-anchor-paw__pad {
   position: absolute;
   display: block;
-  background: #171b24;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  background: #f3a6bd;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 0 0 1px rgba(15, 23, 42, 0.75);
 }
 
 .ask-anchor-paw__toe {
-  width: 6px;
-  height: 7px;
+  width: 5px;
+  height: 6px;
   border-radius: 999px;
-  top: 2px;
+  top: 3px;
 }
 
 .ask-anchor-paw__toe--one {
-  left: 2px;
+  left: 3px;
   transform: rotate(-18deg);
 }
 
 .ask-anchor-paw__toe--two {
   left: 8px;
-  top: 0;
+  top: 1px;
 }
 
 .ask-anchor-paw__toe--three {
-  right: 2px;
+  right: 3px;
   transform: rotate(18deg);
 }
 
 .ask-anchor-paw__pad {
-  left: 4px;
-  bottom: 2px;
-  width: 14px;
-  height: 12px;
-  border-radius: 48% 48% 54% 54%;
+  left: 5px;
+  bottom: 3px;
+  width: 12px;
+  height: 10px;
+  border-radius: 50% 50% 56% 56%;
 }
 
 .ask-anchor-anchor-name {
@@ -711,31 +693,31 @@
 
 @keyframes ask-anchor-cat-blink-overlay {
   0%,
-  88%,
-  92%,
+  82%,
+  87%,
   100% {
     opacity: 0;
     transform: scaleY(0.08);
   }
-  89.4%,
-  90.4% {
+  83.5%,
+  85.2% {
     opacity: 0.96;
     transform: scaleY(1);
   }
 }
 
-@keyframes ask-anchor-cat-ear-twitch {
+@keyframes ask-anchor-cat-ear-wiggle {
   0%,
   82%,
   88%,
   100% {
-    translate: 0 0;
+    transform: translateZ(0) rotate(0deg);
   }
   84% {
-    translate: 0 -1px;
+    transform: translateZ(0) rotate(-1.6deg);
   }
   86% {
-    translate: 0 0;
+    transform: translateZ(0) rotate(1.2deg);
   }
 }
 
@@ -756,8 +738,7 @@
 @media (prefers-reduced-motion: reduce) {
   .ask-anchor-dock-button,
   .ask-anchor-cat-image,
-  .ask-anchor-cat-blink,
-  .ask-anchor-cat-ear {
+  .ask-anchor-cat-blink {
     animation: none !important;
   }
 }

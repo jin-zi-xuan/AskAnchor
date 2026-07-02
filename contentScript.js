@@ -368,8 +368,6 @@
       dock.innerHTML = `
         <button class="ask-anchor-dock-button" type="button" aria-label="AskAnchor" aria-expanded="false">
           <img class="ask-anchor-cat-image" alt="" aria-hidden="true">
-          <span class="ask-anchor-cat-ear ask-anchor-cat-ear--left" aria-hidden="true"></span>
-          <span class="ask-anchor-cat-ear ask-anchor-cat-ear--right" aria-hidden="true"></span>
           <span class="ask-anchor-cat-blink ask-anchor-cat-blink--left" aria-hidden="true"></span>
           <span class="ask-anchor-cat-blink ask-anchor-cat-blink--right" aria-hidden="true"></span>
         </button>
