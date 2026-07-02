@@ -9,6 +9,8 @@
   const MIN_SELECTION_LENGTH = 2;
   const MAX_ANCHORS = 30;
   const ANCHOR_NAME_LENGTH = 28;
+  const SELECTION_CONTEXT_LENGTH = 42;
+  const STORAGE_KEY_PREFIX = "ask-anchor:anchors:";
 
   const PLATFORM_ADAPTERS = [
     {
@@ -131,12 +133,14 @@
   document.addEventListener("keydown", handlePossibleSendKeydown, true);
   window.addEventListener("resize", updateCatDockPosition);
   window.addEventListener("scroll", updateCatDockPosition, { passive: true });
+  document.addEventListener("scroll", updateCatDockPosition, { passive: true, capture: true });
 
   const conversationObserver = new MutationObserver(schedulePendingFollowUpCheck);
   conversationObserver.observe(document.documentElement, {
     childList: true,
     subtree: true
   });
+  window.setTimeout(loadAnchorsFromSession, 500);
 
   function handleSelectionChange() {
     const selection = window.getSelection();
@@ -213,10 +217,12 @@
     }
 
     const sourceRange = selectionSnapshot.range.cloneRange();
+    const selector = serializeRange(sourceRange, selectionSnapshot.messageElement);
     const marker = createSelectionMarker(sourceRange);
     const anchor = addAnchor({
       text: selectionSnapshot.text,
       range: sourceRange,
+      selector,
       marker,
       element: selectionSnapshot.messageElement,
       scrollY: window.scrollY
@@ -246,12 +252,13 @@
     showToast(`\u5df2\u751f\u6210\u951a\u70b9\u300c${anchor.name}\u300d\uff0c\u672a\u627e\u5230\u8f93\u5165\u6846\uff0c\u5df2\u590d\u5236`);
   }
 
-  function addAnchor({ text, range, marker, element, scrollY }) {
+  function addAnchor({ text, range, selector, marker, element, scrollY }) {
     const anchor = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       name: createAnchorName(text),
       text,
       range,
+      selector,
       marker,
       element,
       scrollY,
@@ -260,7 +267,57 @@
 
     anchors.unshift(anchor);
     anchors = anchors.slice(0, MAX_ANCHORS);
+    persistAnchorsToSession();
     return anchor;
+  }
+
+  function persistAnchorsToSession() {
+    try {
+      const payload = anchors.map((anchor) => ({
+        id: anchor.id,
+        name: anchor.name,
+        text: anchor.text,
+        selector: anchor.selector,
+        scrollY: anchor.scrollY,
+        createdAt: anchor.createdAt instanceof Date ? anchor.createdAt.toISOString() : anchor.createdAt
+      }));
+      sessionStorage.setItem(getAnchorStorageKey(), JSON.stringify(payload));
+    } catch (error) {
+      console.debug("[AskAnchor] Failed to persist anchors:", error);
+    }
+  }
+
+  function loadAnchorsFromSession() {
+    try {
+      const raw = sessionStorage.getItem(getAnchorStorageKey());
+      if (!raw) {
+        return;
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return;
+      }
+
+      anchors = parsed.slice(0, MAX_ANCHORS).map((item) => ({
+        id: item.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name: item.name || createAnchorName(item.text),
+        text: item.text || "",
+        selector: item.selector || null,
+        scrollY: typeof item.scrollY === "number" ? item.scrollY : window.scrollY,
+        createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
+        range: null,
+        marker: null,
+        element: document.body
+      }));
+      renderAnchorDock();
+    } catch (error) {
+      console.debug("[AskAnchor] Failed to load anchors:", error);
+    }
+  }
+
+  function getAnchorStorageKey() {
+    return `${STORAGE_KEY_PREFIX}${location.origin}${location.pathname}`;
   }
 
   function createAnchorName(text) {
@@ -284,20 +341,30 @@
       dock.id = DOCK_ID;
       dock.innerHTML = `
         <button class="ask-anchor-dock-button" type="button" aria-label="AskAnchor" aria-expanded="false">
-          <span class="ask-anchor-cat" aria-hidden="true">
-            <span class="ask-anchor-cat__ear ask-anchor-cat__ear--left"></span>
-            <span class="ask-anchor-cat__ear ask-anchor-cat__ear--right"></span>
-            <span class="ask-anchor-cat__face">
-              <span class="ask-anchor-cat__eye ask-anchor-cat__eye--left"></span>
-              <span class="ask-anchor-cat__eye ask-anchor-cat__eye--right"></span>
-              <span class="ask-anchor-cat__nose"></span>
-              <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--left"></span>
-              <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--right"></span>
-            </span>
-            <span class="ask-anchor-cat__body"></span>
-            <span class="ask-anchor-cat__foot ask-anchor-cat__foot--left"></span>
-            <span class="ask-anchor-cat__foot ask-anchor-cat__foot--right"></span>
-            <span class="ask-anchor-cat__tail"></span>
+            <span class="ask-anchor-cat" aria-hidden="true">
+              <span class="ask-anchor-cat__ear ask-anchor-cat__ear--left"></span>
+              <span class="ask-anchor-cat__ear ask-anchor-cat__ear--right"></span>
+              <span class="ask-anchor-cat__ear-core ask-anchor-cat__ear-core--left"></span>
+              <span class="ask-anchor-cat__ear-core ask-anchor-cat__ear-core--right"></span>
+              <span class="ask-anchor-cat__face">
+                <span class="ask-anchor-cat__eye ask-anchor-cat__eye--left"></span>
+                <span class="ask-anchor-cat__eye ask-anchor-cat__eye--right"></span>
+                <span class="ask-anchor-cat__pupil ask-anchor-cat__pupil--left"></span>
+                <span class="ask-anchor-cat__pupil ask-anchor-cat__pupil--right"></span>
+                <span class="ask-anchor-cat__nose"></span>
+                <span class="ask-anchor-cat__mouth"></span>
+                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--left"></span>
+                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--left ask-anchor-cat__whisker--upper"></span>
+                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--left ask-anchor-cat__whisker--lower"></span>
+                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--right"></span>
+                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--right ask-anchor-cat__whisker--upper"></span>
+                <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--right ask-anchor-cat__whisker--lower"></span>
+              </span>
+              <span class="ask-anchor-cat__body"></span>
+              <span class="ask-anchor-cat__belly"></span>
+              <span class="ask-anchor-cat__foot ask-anchor-cat__foot--left"></span>
+              <span class="ask-anchor-cat__foot ask-anchor-cat__foot--right"></span>
+              <span class="ask-anchor-cat__tail"></span>
           </span>
         </button>
         <div id="${TIMELINE_ID}" class="ask-anchor-anchor-timeline" aria-label="AskAnchor timeline"></div>
@@ -448,9 +515,11 @@
       return;
     }
 
-    const left = Math.min(window.innerWidth - 92, Math.max(16, rect.left + 8));
-    const top = Math.min(window.innerHeight - 96, Math.max(18, rect.top - 90));
-    const walkDistance = Math.max(24, Math.min(rect.width - 92, window.innerWidth - left - 92));
+    const catWidth = 76;
+    const trackInset = Math.min(18, Math.max(6, rect.width * 0.04));
+    const left = Math.min(window.innerWidth - catWidth - 12, Math.max(12, rect.left + trackInset));
+    const top = Math.min(window.innerHeight - 86, Math.max(12, rect.top - 82));
+    const walkDistance = Math.max(18, Math.min(rect.width - catWidth - trackInset * 2, window.innerWidth - left - catWidth - 12));
     dock.style.setProperty("--ask-anchor-cat-left", `${left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
@@ -465,6 +534,14 @@
 
     activeAnchorId = id;
     renderAnchorDock();
+
+    const restoredRange = resolveAnchorRange(anchor);
+    if (restoredRange && scrollToSavedRange(restoredRange)) {
+      anchor.range = restoredRange.cloneRange();
+      restoreSelectionHighlight(restoredRange);
+      brieflyHighlight(getRangeHighlightTarget(restoredRange) || anchor.element);
+      return;
+    }
 
     const marker = anchor.marker && document.contains(anchor.marker) ? anchor.marker : null;
     const target = anchor.element && document.contains(anchor.element) ? anchor.element : null;
@@ -833,6 +910,198 @@
     }
   }
 
+  function serializeRange(range, root) {
+    if (!range || !root) {
+      return null;
+    }
+
+    const snapshot = collectVisibleText(root);
+    if (!snapshot.text) {
+      return null;
+    }
+
+    const start = getTextOffsetInNodes(range.startContainer, range.startOffset, snapshot.nodes);
+    const end = getTextOffsetInNodes(range.endContainer, range.endOffset, snapshot.nodes);
+    if (start < 0 || end < start) {
+      return null;
+    }
+
+    return {
+      exact: range.toString(),
+      prefix: snapshot.text.slice(Math.max(0, start - SELECTION_CONTEXT_LENGTH), start),
+      suffix: snapshot.text.slice(end, end + SELECTION_CONTEXT_LENGTH),
+      start,
+      end
+    };
+  }
+
+  function resolveAnchorRange(anchor) {
+    if (anchor.range && isRangeUsable(anchor.range)) {
+      return anchor.range.cloneRange();
+    }
+
+    if (!anchor.selector) {
+      return null;
+    }
+
+    const root = anchor.element && document.contains(anchor.element) ? anchor.element : document.body;
+    return findRangeFromSelector(anchor.selector, root) || findRangeFromSelector(anchor.selector, document.body);
+  }
+
+  function findRangeFromSelector(selector, root) {
+    const snapshot = collectVisibleText(root);
+    if (!selector || !selector.exact || !snapshot.text) {
+      return null;
+    }
+
+    const normalizedStartRange = Math.max(0, Math.min(selector.start || 0, snapshot.text.length));
+    const candidates = [];
+    let index = snapshot.text.indexOf(selector.exact, Math.max(0, normalizedStartRange - 500));
+    while (index !== -1) {
+      candidates.push(index);
+      index = snapshot.text.indexOf(selector.exact, index + 1);
+    }
+
+    if (candidates.length === 0) {
+      index = snapshot.text.indexOf(selector.exact);
+      while (index !== -1) {
+        candidates.push(index);
+        index = snapshot.text.indexOf(selector.exact, index + 1);
+      }
+    }
+
+    const bestStart = candidates
+      .map((start) => ({
+        start,
+        score: scoreSelectorMatch(snapshot.text, selector, start)
+      }))
+      .sort((a, b) => b.score - a.score || Math.abs(a.start - normalizedStartRange) - Math.abs(b.start - normalizedStartRange))[0]?.start;
+
+    if (typeof bestStart !== "number") {
+      return null;
+    }
+
+    return createRangeFromOffsets(snapshot.nodes, bestStart, bestStart + selector.exact.length);
+  }
+
+  function scoreSelectorMatch(text, selector, start) {
+    let score = 0;
+    const prefixStart = Math.max(0, start - (selector.prefix || "").length);
+    const prefix = text.slice(prefixStart, start);
+    const suffix = text.slice(start + selector.exact.length, start + selector.exact.length + (selector.suffix || "").length);
+
+    if (selector.prefix && prefix.endsWith(selector.prefix)) {
+      score += 3;
+    }
+    if (selector.suffix && suffix.startsWith(selector.suffix)) {
+      score += 3;
+    }
+    score -= Math.min(2, Math.abs(start - (selector.start || 0)) / 1000);
+    return score;
+  }
+
+  function collectVisibleText(root) {
+    const nodes = [];
+    const textParts = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        if (!node.textContent || !node.textContent.trim()) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        if (!isVisibleTextNode(node)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+
+    let node = walker.nextNode();
+    while (node) {
+      nodes.push(node);
+      textParts.push(node.textContent);
+      node = walker.nextNode();
+    }
+
+    return {
+      nodes,
+      text: textParts.join("")
+    };
+  }
+
+  function isVisibleTextNode(node) {
+    let element = node.parentElement;
+    while (element && element !== document.documentElement) {
+      if (element.closest?.(`#${DOCK_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
+        return false;
+      }
+      if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "IFRAME"].includes(element.tagName)) {
+        return false;
+      }
+      const style = window.getComputedStyle(element);
+      if (style.display === "none" || style.visibility === "hidden") {
+        return false;
+      }
+      element = element.parentElement;
+    }
+    return true;
+  }
+
+  function getTextOffsetInNodes(container, offset, nodes) {
+    let total = 0;
+    for (const node of nodes) {
+      if (node === container) {
+        return total + offset;
+      }
+      if (container.nodeType === Node.ELEMENT_NODE && container.contains(node)) {
+        const child = getDirectChildContaining(container, node);
+        const childIndex = child ? Array.prototype.indexOf.call(container.childNodes, child) : -1;
+        if (childIndex >= offset) {
+          return total;
+        }
+      }
+      total += node.textContent.length;
+    }
+    return -1;
+  }
+
+  function getDirectChildContaining(parent, node) {
+    let child = node;
+    while (child && child.parentNode !== parent) {
+      child = child.parentNode;
+    }
+    return child || null;
+  }
+
+  function createRangeFromOffsets(nodes, start, end) {
+    const startPoint = findTextPoint(nodes, start);
+    const endPoint = findTextPoint(nodes, end);
+    if (!startPoint || !endPoint) {
+      return null;
+    }
+
+    const range = document.createRange();
+    range.setStart(startPoint.node, startPoint.offset);
+    range.setEnd(endPoint.node, endPoint.offset);
+    return range;
+  }
+
+  function findTextPoint(nodes, offset) {
+    let remaining = offset;
+    for (const node of nodes) {
+      const length = node.textContent.length;
+      if (remaining <= length) {
+        return {
+          node,
+          offset: Math.max(0, Math.min(remaining, length))
+        };
+      }
+      remaining -= length;
+    }
+
+    const last = nodes[nodes.length - 1];
+    return last ? { node: last, offset: last.textContent.length } : null;
+  }
+
   function scrollToSavedRange(range) {
     if (!range) {
       return false;
@@ -844,13 +1113,53 @@
         return false;
       }
 
-      const top = rect.top + window.scrollY - window.innerHeight * 0.35;
-      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      scrollRectToCenter(rect);
       return true;
     } catch (error) {
       console.debug("[AskAnchor] Failed to scroll to saved range:", error);
       return false;
     }
+  }
+
+  function isRangeUsable(range) {
+    try {
+      return Boolean(range && getRangeRect(range) && document.contains(range.commonAncestorContainer));
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function scrollRectToCenter(rect) {
+    const container = findScrollContainerForRect(rect);
+    if (!container || container === document.documentElement || container === document.body) {
+      const top = rect.top + window.scrollY - window.innerHeight * 0.42;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const topDelta = rect.top - containerRect.top - container.clientHeight * 0.42 + rect.height / 2;
+    container.scrollTo({
+      top: Math.max(0, container.scrollTop + topDelta),
+      behavior: "smooth"
+    });
+  }
+
+  function findScrollContainerForRect(rect) {
+    const centerX = Math.max(0, Math.min(window.innerWidth - 1, rect.left + rect.width / 2));
+    const centerY = Math.max(0, Math.min(window.innerHeight - 1, rect.top + rect.height / 2));
+    let element = document.elementFromPoint(centerX, centerY);
+
+    while (element && element !== document.documentElement) {
+      const style = window.getComputedStyle(element);
+      const canScroll = /(auto|scroll|overlay)/.test(`${style.overflowY} ${style.overflow}`);
+      if (canScroll && element.scrollHeight > element.clientHeight + 8) {
+        return element;
+      }
+      element = element.parentElement;
+    }
+
+    return document.scrollingElement || document.documentElement;
   }
 
   function restoreSelectionHighlight(range) {
@@ -876,6 +1185,18 @@
     window.setTimeout(() => {
       element.classList.remove(HIGHLIGHT_CLASS);
     }, 1400);
+  }
+
+  function getRangeHighlightTarget(range) {
+    if (!range) {
+      return null;
+    }
+
+    const container = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+
+    return container?.closest?.("p, li, blockquote, pre, code, .markdown, .prose, [data-message-author-role], article, section, div") || container;
   }
 
   function showToast(message) {
