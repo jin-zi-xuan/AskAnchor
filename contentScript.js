@@ -118,6 +118,7 @@
   let catDockPosition = loadCatDockPosition();
   let catDragState = null;
   let selectionTimer = null;
+  let activeAnchorStorageKey = getAnchorStorageKey();
 
   document.addEventListener("selectionchange", () => {
     clearTimeout(selectionTimer);
@@ -144,7 +145,9 @@
     childList: true,
     subtree: true
   });
+  renderAnchorDock();
   window.setTimeout(loadAnchorsFromSession, 500);
+  window.setInterval(handleConversationRouteChange, 800);
 
   function handleSelectionChange() {
     const selection = window.getSelection();
@@ -293,13 +296,20 @@
 
   function loadAnchorsFromSession() {
     try {
+      activeAnchorStorageKey = getAnchorStorageKey();
       const raw = sessionStorage.getItem(getAnchorStorageKey());
       if (!raw) {
+        anchors = [];
+        activeAnchorId = null;
+        renderAnchorDock();
         return;
       }
 
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed) || parsed.length === 0) {
+        anchors = [];
+        activeAnchorId = null;
+        renderAnchorDock();
         return;
       }
 
@@ -321,7 +331,18 @@
   }
 
   function getAnchorStorageKey() {
-    return `${STORAGE_KEY_PREFIX}${location.origin}${location.pathname}`;
+    return `${STORAGE_KEY_PREFIX}${location.origin}${location.pathname}${location.search}`;
+  }
+
+  function handleConversationRouteChange() {
+    const nextKey = getAnchorStorageKey();
+    if (nextKey === activeAnchorStorageKey) {
+      return;
+    }
+
+    activeAnchorStorageKey = nextKey;
+    closeAnchorList();
+    loadAnchorsFromSession();
   }
 
   function createAnchorName(text) {
@@ -334,11 +355,6 @@
   }
 
   function renderAnchorDock() {
-    if (anchors.length === 0) {
-      removeAnchorDock();
-      return;
-    }
-
     let dock = document.getElementById(DOCK_ID);
     if (!dock) {
       dock = document.createElement("div");
@@ -347,7 +363,6 @@
         <button class="ask-anchor-dock-button" type="button" aria-label="AskAnchor" aria-expanded="false">
           <img class="ask-anchor-cat-image" alt="" aria-hidden="true">
         </button>
-        <div id="${TIMELINE_ID}" class="ask-anchor-anchor-timeline" aria-label="AskAnchor timeline"></div>
         <div id="${LIST_ID}" class="ask-anchor-anchor-list" hidden></div>
       `;
       document.documentElement.appendChild(dock);
@@ -363,24 +378,10 @@
 
     const button = dock.querySelector(".ask-anchor-dock-button");
     const list = dock.querySelector(`#${LIST_ID}`);
-    const timeline = dock.querySelector(`#${TIMELINE_ID}`);
     button.title = `AskAnchor - ${anchors.length} \u4e2a\u951a\u70b9`;
     list.innerHTML = "";
-    timeline.innerHTML = "";
 
     anchors.forEach((anchor, index) => {
-      const tick = document.createElement("button");
-      tick.type = "button";
-      tick.className = `ask-anchor-timeline-tick${anchor.id === activeAnchorId ? " is-active" : ""}`;
-      tick.setAttribute("aria-label", `\u8fd4\u56de\u951a\u70b9 ${index + 1}\uff1a${anchor.name}`);
-      tick.title = anchor.name;
-      tick.addEventListener("click", (event) => {
-        event.stopPropagation();
-        closeAnchorList();
-        returnToAnchor(anchor.id);
-      });
-      timeline.appendChild(tick);
-
       const item = document.createElement("button");
       item.type = "button";
       item.className = `ask-anchor-anchor-item${anchor.id === activeAnchorId ? " is-active" : ""}`;
@@ -402,14 +403,41 @@
       list.appendChild(item);
     });
 
+    renderAnchorTimeline();
     updateCatDockPosition();
   }
 
-  function removeAnchorDock() {
-    const dock = document.getElementById(DOCK_ID);
-    if (dock) {
-      dock.remove();
+  function renderAnchorTimeline() {
+    let timeline = document.getElementById(TIMELINE_ID);
+    if (anchors.length === 0) {
+      if (timeline) {
+        timeline.remove();
+      }
+      return;
     }
+
+    if (!timeline) {
+      timeline = document.createElement("div");
+      timeline.id = TIMELINE_ID;
+      timeline.className = "ask-anchor-anchor-timeline";
+      timeline.setAttribute("aria-label", "AskAnchor timeline");
+      document.documentElement.appendChild(timeline);
+    }
+
+    timeline.innerHTML = "";
+    anchors.forEach((anchor, index) => {
+      const tick = document.createElement("button");
+      tick.type = "button";
+      tick.className = `ask-anchor-timeline-tick${anchor.id === activeAnchorId ? " is-active" : ""}`;
+      tick.setAttribute("aria-label", `\u8fd4\u56de\u951a\u70b9 ${index + 1}\uff1a${anchor.name}`);
+      tick.title = anchor.name;
+      tick.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeAnchorList();
+        returnToAnchor(anchor.id);
+      });
+      timeline.appendChild(tick);
+    });
   }
 
   function handleCatClick(event) {
@@ -546,6 +574,12 @@
     const button = dock.querySelector(".ask-anchor-dock-button");
     const list = dock.querySelector(`#${LIST_ID}`);
     const willOpen = list.hidden;
+    if (anchors.length === 0) {
+      list.hidden = true;
+      button.setAttribute("aria-expanded", "false");
+      showToast("\u5f53\u524d\u5bf9\u8bdd\u8fd8\u6ca1\u6709 AskAnchor \u951a\u70b9");
+      return;
+    }
     list.hidden = !willOpen;
     button.setAttribute("aria-expanded", String(willOpen));
     updateCatDockPosition();
@@ -606,7 +640,7 @@
 
     const catWidth = 76;
     const left = Math.min(window.innerWidth - catWidth - 8, Math.max(8, rect.right - catWidth - 96));
-    const top = Math.min(window.innerHeight - 50, Math.max(8, rect.top - 36));
+    const top = Math.min(window.innerHeight - 50, Math.max(8, rect.top - 40));
     dock.style.setProperty("--ask-anchor-cat-left", `${left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
@@ -617,7 +651,7 @@
     const catWidth = 76;
     const x = clamp(event.clientX - catDragState.offsetX + catWidth / 2, editorRect.left + 28, editorRect.right - 28);
     const ratio = editorRect.width > 0 ? (x - editorRect.left) / editorRect.width : 0.82;
-    const rawOffsetY = event.clientY - catDragState.offsetY - (editorRect.top - 36);
+    const rawOffsetY = event.clientY - catDragState.offsetY - (editorRect.top - 40);
     const offsetY = clamp(rawOffsetY, -6, 6);
 
     return {
@@ -632,7 +666,7 @@
       const catWidth = 76;
       const ratio = clamp(position.ratio ?? 0.82, 0.08, 0.92);
       const left = clamp(editorRect.left + editorRect.width * ratio - catWidth / 2, 4, window.innerWidth - catWidth - 4);
-      const top = clamp(editorRect.top - 36 + (position.offsetY || 0), 4, window.innerHeight - 44 - 4);
+      const top = clamp(editorRect.top - 40 + (position.offsetY || 0), 4, window.innerHeight - 44 - 4);
       return { left, top };
     }
 

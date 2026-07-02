@@ -358,8 +358,9 @@
 }
 
 .ask-anchor-anchor-list {
-  grid-column: 2;
-  grid-row: 2;
+  position: fixed;
+  right: 18px;
+  bottom: 92px;
   display: grid;
   gap: 6px;
   width: min(300px, calc(100vw - 36px));
@@ -372,7 +373,6 @@
   padding: 8px;
   animation: ask-anchor-fade-up 160ms ease-out;
   backdrop-filter: blur(20px) saturate(1.4);
-  margin-left: 4px;
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-anchor-list {
@@ -380,8 +380,10 @@
 }
 
 .ask-anchor-anchor-timeline {
-  grid-column: 1;
-  grid-row: 1 / span 2;
+  position: fixed;
+  z-index: 2147483644;
+  right: 12px;
+  top: 50%;
   display: grid;
   align-content: center;
   gap: 9px;
@@ -391,6 +393,7 @@
   overflow: hidden;
   padding: 4px 0;
   pointer-events: auto;
+  transform: translateY(-50%);
 }
 
 .ask-anchor-timeline-tick {
@@ -414,11 +417,6 @@
   width: 12px;
   background: rgba(17, 24, 39, 0.86);
   transform: translateX(-2px);
-}
-
-#ask-anchor-anchor-dock.is-tucked .ask-anchor-anchor-timeline {
-  opacity: 0.72;
-  transform: translateX(-18px);
 }
 
 .ask-anchor-anchor-list[hidden] {
