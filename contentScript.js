@@ -108,6 +108,7 @@
   let pendingFollowUpTimer = null;
   let pendingFollowUpPollTimer = null;
   let sentQuestionStabilizeTimer = null;
+  let catDockTucked = false;
   let selectionTimer = null;
 
   document.addEventListener("selectionchange", () => {
@@ -126,6 +127,8 @@
   });
   document.addEventListener("click", handlePossibleSendClick, true);
   document.addEventListener("keydown", handlePossibleSendKeydown, true);
+  window.addEventListener("resize", updateCatDockPosition);
+  window.addEventListener("scroll", updateCatDockPosition, { passive: true });
 
   const conversationObserver = new MutationObserver(schedulePendingFollowUpCheck);
   conversationObserver.observe(document.documentElement, {
@@ -278,17 +281,31 @@
       dock = document.createElement("div");
       dock.id = DOCK_ID;
       dock.innerHTML = `
-        <button class="ask-anchor-dock-button" type="button" aria-expanded="false"></button>
+        <button class="ask-anchor-dock-button" type="button" aria-label="AskAnchor" aria-expanded="false">
+          <span class="ask-anchor-cat" aria-hidden="true">
+            <span class="ask-anchor-cat__ear ask-anchor-cat__ear--left"></span>
+            <span class="ask-anchor-cat__ear ask-anchor-cat__ear--right"></span>
+            <span class="ask-anchor-cat__face">
+              <span class="ask-anchor-cat__eye ask-anchor-cat__eye--left"></span>
+              <span class="ask-anchor-cat__eye ask-anchor-cat__eye--right"></span>
+              <span class="ask-anchor-cat__nose"></span>
+              <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--left"></span>
+              <span class="ask-anchor-cat__whisker ask-anchor-cat__whisker--right"></span>
+            </span>
+            <span class="ask-anchor-cat__tail"></span>
+          </span>
+        </button>
         <div id="${LIST_ID}" class="ask-anchor-anchor-list" hidden></div>
       `;
       document.documentElement.appendChild(dock);
 
-      dock.querySelector(".ask-anchor-dock-button").addEventListener("click", toggleAnchorList);
+      const catButton = dock.querySelector(".ask-anchor-dock-button");
+      catButton.addEventListener("click", handleCatClick);
+      catButton.addEventListener("dblclick", tuckCatDock);
     }
 
     const button = dock.querySelector(".ask-anchor-dock-button");
     const list = dock.querySelector(`#${LIST_ID}`);
-    button.textContent = "AskAnchor";
     button.title = `AskAnchor - ${anchors.length} \u4e2a\u951a\u70b9`;
     list.innerHTML = "";
 
@@ -296,8 +313,14 @@
       const item = document.createElement("button");
       item.type = "button";
       item.className = "ask-anchor-anchor-item";
+      item.setAttribute("aria-label", `\u8fd4\u56de\u951a\u70b9 ${index + 1}\uff1a${anchor.name}`);
       item.innerHTML = `
-        <span class="ask-anchor-anchor-index">${index + 1}</span>
+        <span class="ask-anchor-anchor-index" aria-hidden="true">
+          <span class="ask-anchor-paw__toe ask-anchor-paw__toe--one"></span>
+          <span class="ask-anchor-paw__toe ask-anchor-paw__toe--two"></span>
+          <span class="ask-anchor-paw__toe ask-anchor-paw__toe--three"></span>
+          <span class="ask-anchor-paw__pad"></span>
+        </span>
         <span class="ask-anchor-anchor-name"></span>
       `;
       item.querySelector(".ask-anchor-anchor-name").textContent = anchor.name;
@@ -307,6 +330,8 @@
       });
       list.appendChild(item);
     });
+
+    updateCatDockPosition();
   }
 
   function removeAnchorDock() {
@@ -314,6 +339,34 @@
     if (dock) {
       dock.remove();
     }
+  }
+
+  function handleCatClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (catDockTucked) {
+      untuckCatDock();
+      return;
+    }
+
+    toggleAnchorList();
+  }
+
+  function tuckCatDock(event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    catDockTucked = true;
+    closeAnchorList();
+    updateCatDockPosition();
+  }
+
+  function untuckCatDock() {
+    catDockTucked = false;
+    updateCatDockPosition();
   }
 
   function toggleAnchorList() {
@@ -327,6 +380,7 @@
     const willOpen = list.hidden;
     list.hidden = !willOpen;
     button.setAttribute("aria-expanded", String(willOpen));
+    updateCatDockPosition();
   }
 
   function closeAnchorList() {
@@ -343,6 +397,40 @@
     if (button) {
       button.setAttribute("aria-expanded", "false");
     }
+  }
+
+  function updateCatDockPosition() {
+    const dock = document.getElementById(DOCK_ID);
+    if (!dock) {
+      return;
+    }
+
+    dock.classList.toggle("is-tucked", catDockTucked);
+    if (catDockTucked) {
+      dock.style.removeProperty("--ask-anchor-cat-left");
+      dock.style.removeProperty("--ask-anchor-cat-right");
+      dock.style.removeProperty("--ask-anchor-cat-top");
+      return;
+    }
+
+    const editor = findPromptEditor();
+    if (!editor) {
+      dock.style.removeProperty("--ask-anchor-cat-left");
+      dock.style.removeProperty("--ask-anchor-cat-right");
+      dock.style.removeProperty("--ask-anchor-cat-top");
+      return;
+    }
+
+    const rect = editor.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+
+    const left = Math.min(window.innerWidth - 96, Math.max(16, rect.left + rect.width * 0.12));
+    const top = Math.min(window.innerHeight - 92, Math.max(18, rect.top - 72));
+    dock.style.setProperty("--ask-anchor-cat-left", `${left}px`);
+    dock.style.setProperty("--ask-anchor-cat-right", "auto");
+    dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
   }
 
   function returnToAnchor(id) {

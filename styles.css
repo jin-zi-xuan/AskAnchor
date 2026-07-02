@@ -23,33 +23,153 @@
 #ask-anchor-anchor-dock {
   position: fixed;
   z-index: 2147483645;
-  right: 0;
-  top: 50%;
+  left: var(--ask-anchor-cat-left, auto);
+  right: var(--ask-anchor-cat-right, 0);
+  top: var(--ask-anchor-cat-top, 50%);
   display: grid;
-  justify-items: end;
+  justify-items: start;
   gap: 8px;
   font: 13px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
-  transform: translateY(-50%);
+  transform: translateY(var(--ask-anchor-cat-shift, -50%));
+  transition: left 220ms ease, right 220ms ease, top 220ms ease, transform 220ms ease;
+}
+
+#ask-anchor-anchor-dock.is-tucked {
+  left: auto;
+  right: -36px;
+  top: 50%;
+  justify-items: end;
+  --ask-anchor-cat-shift: -50%;
 }
 
 .ask-anchor-dock-button {
-  min-height: 42px;
-  border: 1px solid rgba(255, 255, 255, 0.48);
-  border-right: 0;
-  border-radius: 14px 0 0 14px;
-  background: rgba(17, 24, 39, 0.88);
-  color: #ffffff;
-  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  position: relative;
+  width: 70px;
+  height: 58px;
+  border: 0;
+  background: transparent;
   cursor: pointer;
-  font: 800 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
-  padding: 11px 8px 11px 10px;
-  writing-mode: vertical-rl;
-  backdrop-filter: blur(18px) saturate(1.4);
+  padding: 0;
+  animation: ask-anchor-cat-run 3.8s ease-in-out infinite;
+  filter: drop-shadow(0 12px 22px rgba(15, 23, 42, 0.24));
 }
 
 .ask-anchor-dock-button:hover,
 .ask-anchor-dock-button[aria-expanded="true"] {
-  background: rgba(31, 41, 55, 0.96);
+  transform: translateY(-2px);
+}
+
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-dock-button {
+  animation: none;
+}
+
+.ask-anchor-cat {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.ask-anchor-cat__face {
+  position: absolute;
+  left: 8px;
+  top: 12px;
+  width: 52px;
+  height: 42px;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  border-radius: 48% 48% 42% 42%;
+  background: linear-gradient(180deg, #2f3440, #171b24);
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.12);
+}
+
+.ask-anchor-cat__ear {
+  position: absolute;
+  top: 5px;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  background: #232936;
+  transform: rotate(45deg);
+}
+
+.ask-anchor-cat__ear--left {
+  left: 13px;
+  border-radius: 4px 2px 5px 2px;
+}
+
+.ask-anchor-cat__ear--right {
+  right: 13px;
+  border-radius: 2px 4px 2px 5px;
+}
+
+.ask-anchor-cat__eye {
+  position: absolute;
+  top: 14px;
+  width: 7px;
+  height: 10px;
+  border-radius: 999px;
+  background: #dbeafe;
+  animation: ask-anchor-cat-blink 5.4s ease-in-out infinite;
+}
+
+.ask-anchor-cat__eye--left {
+  left: 14px;
+}
+
+.ask-anchor-cat__eye--right {
+  right: 14px;
+}
+
+.ask-anchor-cat__nose {
+  position: absolute;
+  left: 23px;
+  top: 26px;
+  width: 7px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f8a8b8;
+}
+
+.ask-anchor-cat__whisker {
+  position: absolute;
+  top: 28px;
+  width: 15px;
+  height: 1px;
+  background: rgba(226, 232, 240, 0.8);
+}
+
+.ask-anchor-cat__whisker--left {
+  left: 4px;
+  transform: rotate(-10deg);
+}
+
+.ask-anchor-cat__whisker--right {
+  right: 4px;
+  transform: rotate(10deg);
+}
+
+.ask-anchor-cat__tail {
+  position: absolute;
+  right: 0;
+  top: 27px;
+  width: 18px;
+  height: 18px;
+  border: 4px solid #202633;
+  border-left: 0;
+  border-bottom: 0;
+  border-radius: 0 18px 0 0;
+  transform: rotate(18deg);
+  transform-origin: left bottom;
+  animation: ask-anchor-cat-tail 1.4s ease-in-out infinite;
+}
+
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat__tail,
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat__nose,
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat__whisker {
+  opacity: 0;
+}
+
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-cat__face {
+  left: 0;
 }
 
 .ask-anchor-anchor-list {
@@ -65,7 +185,11 @@
   padding: 8px;
   animation: ask-anchor-fade-up 160ms ease-out;
   backdrop-filter: blur(20px) saturate(1.4);
-  margin-right: 8px;
+  margin-left: 4px;
+}
+
+#ask-anchor-anchor-dock.is-tucked .ask-anchor-anchor-list {
+  display: none !important;
 }
 
 .ask-anchor-anchor-list[hidden] {
@@ -94,15 +218,54 @@
 }
 
 .ask-anchor-anchor-index {
-  display: grid;
-  place-items: center;
+  position: relative;
+  display: block;
   width: 22px;
   height: 22px;
+  transform: rotate(-12deg);
+  transition: transform 160ms ease;
+}
+
+.ask-anchor-anchor-item:hover .ask-anchor-anchor-index {
+  transform: rotate(-8deg) scale(1.08);
+}
+
+.ask-anchor-paw__toe,
+.ask-anchor-paw__pad {
+  position: absolute;
+  display: block;
+  background: #171b24;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.ask-anchor-paw__toe {
+  width: 6px;
+  height: 7px;
   border-radius: 999px;
-  background: rgba(17, 24, 39, 0.92);
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
+  top: 2px;
+}
+
+.ask-anchor-paw__toe--one {
+  left: 2px;
+  transform: rotate(-18deg);
+}
+
+.ask-anchor-paw__toe--two {
+  left: 8px;
+  top: 0;
+}
+
+.ask-anchor-paw__toe--three {
+  right: 2px;
+  transform: rotate(18deg);
+}
+
+.ask-anchor-paw__pad {
+  left: 4px;
+  bottom: 2px;
+  width: 14px;
+  height: 12px;
+  border-radius: 48% 48% 54% 54%;
 }
 
 .ask-anchor-anchor-name {
@@ -182,9 +345,50 @@
   }
 }
 
+@keyframes ask-anchor-cat-run {
+  0%,
+  100% {
+    transform: translateX(0) translateY(0) rotate(-1deg);
+  }
+  35% {
+    transform: translateX(18px) translateY(-3px) rotate(2deg);
+  }
+  70% {
+    transform: translateX(4px) translateY(1px) rotate(-2deg);
+  }
+}
+
+@keyframes ask-anchor-cat-tail {
+  0%,
+  100% {
+    transform: rotate(10deg);
+  }
+  50% {
+    transform: rotate(30deg);
+  }
+}
+
+@keyframes ask-anchor-cat-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.18);
+  }
+}
+
 @media (max-width: 560px) {
   #ask-anchor-anchor-dock {
-    right: 0;
+    left: var(--ask-anchor-cat-left, auto);
+    right: var(--ask-anchor-cat-right, 0);
+    top: var(--ask-anchor-cat-top, 52%);
+  }
+
+  #ask-anchor-anchor-dock.is-tucked {
+    left: auto;
+    right: -36px;
     top: 52%;
   }
 }
