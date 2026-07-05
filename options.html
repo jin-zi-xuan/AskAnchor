@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AskAnchor 隐私与平台权限</title>
+    <link rel="stylesheet" href="settings.css">
+  </head>
+  <body class="ask-anchor-settings ask-anchor-settings--options">
+    <main class="settings-shell">
+      <header class="settings-header">
+        <div>
+          <h1>隐私与平台权限</h1>
+          <p>AskAnchor 默认在支持的 AI 网站运行。关闭平台后，该站点不会显示追问按钮、小猫、锚点列表或时间线。</p>
+        </div>
+      </header>
+
+      <section class="settings-section" aria-labelledby="privacy-title">
+        <h2 id="privacy-title">数据说明</h2>
+        <ul class="privacy-list">
+          <li>AskAnchor 不上传聊天记录，没有后端，也不会把聊天内容发送到远程服务器。</li>
+          <li>锚点保存在当前页面的 sessionStorage，小猫位置保存在页面 localStorage。</li>
+          <li>平台开关只保存在浏览器本地的扩展存储中。</li>
+          <li>clipboardWrite 只在找不到输入框时，用来复制你主动生成的追问内容。</li>
+        </ul>
+      </section>
+
+      <form id="ask-anchor-settings-form" class="settings-form">
+        <section class="settings-section" aria-labelledby="platforms-title">
+          <div class="section-heading">
+            <div>
+              <h2 id="platforms-title">启用的平台</h2>
+              <p>默认全部开启。关闭后需要刷新对应页面，确保 AskAnchor 不再读取该平台页面内容。</p>
+            </div>
+            <div class="settings-actions" aria-label="批量操作">
+              <button type="button" data-platform-action="enable-all">全部开启</button>
+              <button type="button" data-platform-action="disable-all">全部关闭</button>
+              <button type="button" data-platform-action="restore-defaults">恢复默认</button>
+            </div>
+          </div>
+          <div id="ask-anchor-platform-list" class="platform-list"></div>
+        </section>
+
+        <section class="settings-section" aria-labelledby="behavior-title">
+          <h2 id="behavior-title">页面行为</h2>
+          <label class="settings-toggle">
+            <span>
+              <strong>显示小猫</strong>
+              <small>关闭后仍可使用快捷键、选区按钮和时间线。</small>
+            </span>
+            <input type="checkbox" name="showCat">
+          </label>
+
+          <fieldset>
+            <legend>默认位置</legend>
+            <label><input type="radio" name="catDefaultPosition" value="editor"> 输入框旁</label>
+            <label><input type="radio" name="catDefaultPosition" value="right"> 页面右侧</label>
+            <label><input type="radio" name="catDefaultPosition" value="custom"> 自定义</label>
+          </fieldset>
+
+          <fieldset>
+            <legend>时间线</legend>
+            <label><input type="radio" name="timelineMode" value="auto"> 自动识别</label>
+            <label><input type="radio" name="timelineMode" value="on"> 开</label>
+            <label><input type="radio" name="timelineMode" value="off"> 关</label>
+          </fieldset>
+
+          <label class="settings-toggle">
+            <span>
+              <strong>动画与眼部跟随</strong>
+              <small>关闭后禁用小猫眼部跟随和循环动效。</small>
+            </span>
+            <input type="checkbox" name="eyeTracking">
+          </label>
+        </section>
+      </form>
+
+      <footer class="settings-footer">
+        <span id="ask-anchor-settings-status" role="status"></span>
+      </footer>
+    </main>
+    <script src="src/platforms.js"></script>
+    <script src="src/core.js"></script>
+    <script src="settings.js"></script>
+  </body>
+</html>

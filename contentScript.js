@@ -1,7 +1,12 @@
 (function initAskAnchor() {
   const BUTTON_ID = "ask-anchor-explain-button";
+  const FOLLOW_UP_MENU_ID = "ask-anchor-follow-up-menu";
   const DOCK_ID = "ask-anchor-anchor-dock";
   const LIST_ID = "ask-anchor-anchor-list";
+  const PANEL_ID = "ask-anchor-anchor-panel";
+  const PANEL_LIST_ID = "ask-anchor-anchor-panel-list";
+  const BRANCH_PANEL_ID = "ask-anchor-branch-panel";
+  const BRANCH_LIST_ID = "ask-anchor-branch-list";
   const TIMELINE_ID = "ask-anchor-anchor-timeline";
   const TIMELINE_PREVIEW_ID = "ask-anchor-timeline-preview";
   const TOAST_ID = "ask-anchor-toast";
@@ -9,1794 +14,242 @@
   const MARKER_CLASS = "ask-anchor-selection-marker";
   const MIN_SELECTION_LENGTH = 2;
   const MAX_ANCHORS = 30;
+  const MAX_BRANCHES = 20;
   const ANCHOR_NAME_LENGTH = 28;
+  const BRANCH_TITLE_LENGTH = 26;
   const SELECTION_CONTEXT_LENGTH = 42;
+  const ANCHOR_STATUS_UNRESOLVED = "unresolved";
+  const ANCHOR_STATUS_UNDERSTOOD = "understood";
+  const UNNAMED_ANCHOR_NAME = "\u672a\u547d\u540d\u951a\u70b9";
+  const MESSAGE_LOCATOR_SUMMARY_LENGTH = 220;
+  const MESSAGE_LOCATOR_ATTRIBUTE_DEPTH = 2;
+  const CONVERSATION_ROOT_REFRESH_DELAY = 900;
+  const CONVERSATION_TIMELINE_RENDER_DELAY = 450;
   const STORAGE_KEY_PREFIX = "ask-anchor:anchors:";
+  const BRANCH_STORAGE_KEY_PREFIX = "ask-anchor:branches:";
+  const SETTINGS_STORAGE_KEY = "askAnchorSettings";
+  const LEGACY_SETTINGS_STORAGE_KEY = "ask-anchor:settings";
+  const SETTINGS_SCHEMA_VERSION = 1;
   const CAT_POSITION_STORAGE_KEY = "ask-anchor:cat-position";
   const TUCKED_CAT_TOP_STORAGE_KEY = "ask-anchor:tucked-cat-top";
-  const CAT_IMAGE_URL = chrome.runtime.getURL("assets/askanchor-cat-perch.png");
-  const CAT_PEEK_IMAGE_URL = chrome.runtime.getURL("assets/askanchor-cat-peek-right.png");
-
-  const PLATFORM_ADAPTERS = [
+  const DEFAULT_FOLLOW_UP_TEMPLATE_ID = "explain";
+  const BRANCH_STATUS_DRAFT = "draft";
+  const BRANCH_STATUS_SENT = "sent";
+  const BRANCH_STATUS_DONE = "done";
+  const DEFAULT_SETTINGS = Object.freeze({
+    schemaVersion: SETTINGS_SCHEMA_VERSION,
+    showCat: true,
+    catDefaultPosition: "editor",
+    timelineMode: "auto",
+    eyeTracking: true,
+    enabledPlatforms: {}
+  });
+  const COMMANDS = Object.freeze({
+    OPEN_ANCHORS: "askanchor-open-anchors",
+    FOLLOW_UP_SELECTION: "askanchor-follow-up-selection"
+  });
+  const core = globalThis.AskAnchorCore;
+  const FOLLOW_UP_TEMPLATES = [
     {
-      name: "chatgpt",
-      hosts: ["chatgpt.com", "chat.openai.com"],
-      assistantSelectors: ["[data-message-author-role='assistant']"],
-      userSelectors: ["[data-message-author-role='user']"],
-      messageSelectors: ["[data-message-author-role]"],
-      roleFromNode: (node) => node.getAttribute("data-message-author-role")
+      id: "explain",
+      label: "\u89e3\u91ca\u6982\u5ff5",
+      instruction: "\u8bf7\u89e3\u91ca\u6211\u5728\u4e0a\u6587\u4e2d\u9009\u4e2d\u7684\u8fd9\u6bb5\u5185\u5bb9\uff0c\u5e76\u8bf4\u660e\u5b83\u548c\u4e0a\u4e0b\u6587\u7684\u5173\u7cfb\u3002"
     },
     {
-      name: "gemini",
-      hosts: ["gemini.google.com"],
-      assistantSelectors: ["model-response", ".model-response-text", "[class*='model-response']"],
-      userSelectors: ["user-query", ".query-text", "[class*='user-query']"],
-      messageSelectors: ["user-query", "model-response", ".query-text", ".model-response-text"],
-      roleFromNode: (node) => node.matches("user-query, .query-text, [class*='user-query']") ? "user" : "assistant"
+      id: "example",
+      label: "\u4e3e\u4e2a\u4f8b\u5b50",
+      instruction: "\u8bf7\u7528\u4e00\u4e2a\u7b80\u5355\u4f8b\u5b50\u89e3\u91ca\u6211\u9009\u4e2d\u7684\u8fd9\u6bb5\u5185\u5bb9\uff0c\u5e76\u8bf4\u660e\u5b83\u5728\u539f\u56de\u7b54\u4e2d\u8d77\u4ec0\u4e48\u4f5c\u7528\u3002"
     },
     {
-      name: "claude",
-      hosts: ["claude.ai"],
-      assistantSelectors: ["[data-testid*='assistant']", "[class*='assistant']", ".font-claude-message"],
-      userSelectors: ["[data-testid*='user']", "[class*='human']", "[class*='user']"],
-      messageSelectors: ["[data-testid*='message']", ".font-claude-message", "[class*='message']"],
-      roleFromNode: (node) => inferRoleFromNode(node)
+      id: "context",
+      label: "\u7ed3\u5408\u4e0a\u4e0b\u6587\u8bb2",
+      instruction: "\u8bf7\u7ed3\u5408\u4e0a\u6587\u89e3\u91ca\u6211\u9009\u4e2d\u7684\u8fd9\u6bb5\u5185\u5bb9\uff1a\u5b83\u627f\u63a5\u4e86\u4ec0\u4e48\u3001\u8865\u5145\u4e86\u4ec0\u4e48\uff0c\u4ee5\u53ca\u6211\u5e94\u8be5\u600e\u4e48\u7406\u89e3\u5b83\u3002"
     },
     {
-      name: "perplexity",
-      hosts: ["perplexity.ai", "www.perplexity.ai"],
-      assistantSelectors: ["[data-testid*='answer']", "[class*='answer']", "[class*='prose']"],
-      userSelectors: ["[data-testid*='query']", "[class*='query']", "[class*='user']"],
-      messageSelectors: ["[data-testid*='answer']", "[data-testid*='query']", "[class*='answer']", "[class*='query']"],
-      roleFromNode: (node) => inferRoleFromNode(node)
+      id: "rephrase",
+      label: "\u6362\u4e00\u79cd\u8bf4\u6cd5",
+      instruction: "\u8bf7\u628a\u6211\u9009\u4e2d\u7684\u8fd9\u6bb5\u5185\u5bb9\u6362\u4e00\u79cd\u66f4\u5bb9\u6613\u7406\u89e3\u7684\u8bf4\u6cd5\uff0c\u5e76\u5c3d\u91cf\u4fdd\u7559\u539f\u610f\u3002"
     },
     {
-      name: "poe",
-      hosts: ["poe.com"],
-      assistantSelectors: ["[class*='ChatMessage_messageRow']", "[class*='bot']", "[class*='assistant']"],
-      userSelectors: ["[class*='human']", "[class*='user']"],
-      messageSelectors: ["[class*='ChatMessage']", "[class*='message']"],
-      roleFromNode: (node) => inferRoleFromNode(node)
+      id: "code",
+      label: "\u6307\u51fa\u4ee3\u7801\u95ee\u9898",
+      instruction: "\u8bf7\u7ed3\u5408\u4e0a\u4e0b\u6587\u89e3\u91ca\u8fd9\u6bb5\u4ee3\u7801\u7684\u4f5c\u7528\u3001\u8f93\u5165\u8f93\u51fa\u548c\u53ef\u80fd\u7684\u95ee\u9898\u3002"
     },
     {
-      name: "copilot",
-      hosts: ["copilot.microsoft.com"],
-      assistantSelectors: ["[data-content='ai-message']", "[class*='response']", "[class*='assistant']"],
-      userSelectors: ["[data-content='user-message']", "[class*='user-message']"],
-      messageSelectors: ["[data-content]", "[class*='message']", "[class*='response']"],
-      roleFromNode: (node) => inferRoleFromNode(node)
+      id: "translate",
+      label: "\u7ffb\u8bd1\u5e76\u89e3\u91ca",
+      instruction: "\u8bf7\u5148\u628a\u6211\u9009\u4e2d\u7684\u5185\u5bb9\u7ffb\u8bd1\u6210\u901a\u4fd7\u4e2d\u6587\uff0c\u518d\u89e3\u91ca\u5176\u4e2d\u7684\u5173\u952e\u672f\u8bed\u548c\u4e0a\u4e0b\u6587\u542b\u4e49\u3002"
     },
     {
-      name: "deepseek",
-      hosts: ["chat.deepseek.com"],
-      assistantSelectors: ["[class*='ds-markdown']", "[class*='assistant']", "[class*='answer']"],
-      userSelectors: ["[class*='user']", "[class*='question']"],
-      messageSelectors: ["[class*='message']", "[class*='markdown']", "[class*='chat']"],
-      roleFromNode: (node) => inferRoleFromNode(node)
+      id: "critique",
+      label: "\u53cd\u9a73\u6216\u68c0\u67e5\u8fd9\u6bb5\u8bdd",
+      instruction: "\u8bf7\u53cd\u9a73\u6216\u68c0\u67e5\u6211\u9009\u4e2d\u7684\u8fd9\u6bb5\u8bdd\uff1a\u6307\u51fa\u5b83\u7684\u5047\u8bbe\u3001\u53ef\u80fd\u6f0f\u6d1e\u3001\u9700\u8981\u8865\u5145\u8bc1\u636e\u7684\u5730\u65b9\uff0c\u4ee5\u53ca\u5b83\u662f\u5426\u548c\u4e0a\u4e0b\u6587\u4e00\u81f4\u3002"
     },
     {
-      name: "kimi",
-      hosts: ["kimi.moonshot.cn"],
-      assistantSelectors: ["[class*='assistant']", "[class*='markdown']", "[class*='answer']"],
-      userSelectors: ["[class*='user']", "[class*='question']"],
-      messageSelectors: ["[class*='message']", "[class*='chat']", "[class*='markdown']"],
-      roleFromNode: (node) => inferRoleFromNode(node)
-    },
-    {
-      name: "doubao",
-      hosts: ["doubao.com", "www.doubao.com"],
-      assistantSelectors: ["[class*='assistant']", "[class*='answer']", "[class*='markdown']"],
-      userSelectors: ["[class*='user']", "[class*='question']"],
-      messageSelectors: ["[class*='message']", "[class*='chat']", "[class*='markdown']"],
-      roleFromNode: (node) => inferRoleFromNode(node)
-    },
-    {
-      name: "tongyi",
-      hosts: ["tongyi.aliyun.com"],
-      assistantSelectors: ["[class*='assistant']", "[class*='answer']", "[class*='markdown']"],
-      userSelectors: ["[class*='user']", "[class*='question']"],
-      messageSelectors: ["[class*='message']", "[class*='chat']", "[class*='markdown']"],
-      roleFromNode: (node) => inferRoleFromNode(node)
-    },
-    {
-      name: "yiyan",
-      hosts: ["yiyan.baidu.com"],
-      assistantSelectors: ["[class*='assistant']", "[class*='answer']", "[class*='markdown']"],
-      userSelectors: ["[class*='user']", "[class*='question']"],
-      messageSelectors: ["[class*='message']", "[class*='chat']", "[class*='markdown']"],
-      roleFromNode: (node) => inferRoleFromNode(node)
+      id: "custom",
+      label: "\u81ea\u5b9a\u4e49\u63d0\u95ee",
+      custom: true
     }
   ];
 
-  const activeAdapter = getActiveAdapter();
+  let activeAdapter = null;
   let currentSelection = null;
   let lastValidSelection = null;
   let anchors = [];
+  let branches = [];
   let activeAnchorId = null;
+  let activeBranchId = null;
+  let activeBranchAnchorId = null;
+  let editingBranchId = null;
   let pendingFollowUp = null;
   let pendingFollowUpTimer = null;
   let pendingFollowUpPollTimer = null;
   let sentQuestionStabilizeTimer = null;
   let catDockTucked = false;
-  let catDockPosition = loadCatDockPosition();
-  let tuckedCatTop = loadTuckedCatTop();
+  let catDockPosition = null;
+  let tuckedCatTop = null;
   let catDragState = null;
+  let catEyePointer = null;
+  let catEyeFrame = null;
+  let askAnchorSettings = { ...DEFAULT_SETTINGS };
   let selectionTimer = null;
-  let activeAnchorStorageKey = getAnchorStorageKey();
+  let activeAnchorStorageKey = null;
+  let activeBranchStorageKey = null;
   let conversationTimelineTimer = null;
+  let conversationRootRefreshTimer = null;
+  let anchorLoadTimer = null;
+  let initialTimelineTimer = null;
+  let askAnchorStarted = false;
+  let platformDisabledBySettings = false;
+  let observedConversationRoot = null;
+  let lastObservedUrl = location.href;
+  const timelineState = {
+    messageToTick: new Map(),
+    tickToMessage: new Map(),
+    activeMessage: null,
+    observer: null
+  };
 
-  document.addEventListener("selectionchange", () => {
-    clearTimeout(selectionTimer);
-    selectionTimer = setTimeout(handleSelectionChange, 120);
+  function getExtensionUrl(path) {
+    const runtime = getExtensionApi()?.runtime;
+    if (runtime?.getURL) {
+      return runtime.getURL(path);
+    }
+
+    return path;
+  }
+
+  function getExtensionApi() {
+    return globalThis.browser || globalThis.chrome || null;
+  }
+
+  const CAT_IMAGE_URL = getExtensionUrl("assets/askanchor-cat-perch.png");
+  const CAT_PEEK_IMAGE_URL = getExtensionUrl("assets/askanchor-cat-peek-right.png");
+
+  const ctx = {
+    BUTTON_ID,
+    FOLLOW_UP_MENU_ID,
+    DOCK_ID,
+    LIST_ID,
+    PANEL_ID,
+    PANEL_LIST_ID,
+    BRANCH_PANEL_ID,
+    BRANCH_LIST_ID,
+    TIMELINE_ID,
+    TIMELINE_PREVIEW_ID,
+    TOAST_ID,
+    HIGHLIGHT_CLASS,
+    MARKER_CLASS,
+    MIN_SELECTION_LENGTH,
+    MAX_ANCHORS,
+    MAX_BRANCHES,
+    ANCHOR_NAME_LENGTH,
+    BRANCH_TITLE_LENGTH,
+    SELECTION_CONTEXT_LENGTH,
+    ANCHOR_STATUS_UNRESOLVED,
+    ANCHOR_STATUS_UNDERSTOOD,
+    UNNAMED_ANCHOR_NAME,
+    MESSAGE_LOCATOR_SUMMARY_LENGTH,
+    MESSAGE_LOCATOR_ATTRIBUTE_DEPTH,
+    CONVERSATION_ROOT_REFRESH_DELAY,
+    CONVERSATION_TIMELINE_RENDER_DELAY,
+    STORAGE_KEY_PREFIX,
+    BRANCH_STORAGE_KEY_PREFIX,
+    SETTINGS_STORAGE_KEY,
+    LEGACY_SETTINGS_STORAGE_KEY,
+    SETTINGS_SCHEMA_VERSION,
+    CAT_POSITION_STORAGE_KEY,
+    TUCKED_CAT_TOP_STORAGE_KEY,
+    CAT_IMAGE_URL,
+    CAT_PEEK_IMAGE_URL,
+    DEFAULT_FOLLOW_UP_TEMPLATE_ID,
+    BRANCH_STATUS_DRAFT,
+    BRANCH_STATUS_SENT,
+    BRANCH_STATUS_DONE,
+    DEFAULT_SETTINGS,
+    COMMANDS,
+    core,
+    FOLLOW_UP_TEMPLATES,
+    timelineState,
+    getExtensionUrl,
+    getExtensionApi
+  };
+
+  Object.defineProperties(ctx, {
+    activeAdapter: { get: () => activeAdapter, set: (value) => { activeAdapter = value; } },
+    currentSelection: { get: () => currentSelection, set: (value) => { currentSelection = value; } },
+    lastValidSelection: { get: () => lastValidSelection, set: (value) => { lastValidSelection = value; } },
+    anchors: { get: () => anchors, set: (value) => { anchors = value; } },
+    branches: { get: () => branches, set: (value) => { branches = value; } },
+    activeAnchorId: { get: () => activeAnchorId, set: (value) => { activeAnchorId = value; } },
+    activeBranchId: { get: () => activeBranchId, set: (value) => { activeBranchId = value; } },
+    activeBranchAnchorId: { get: () => activeBranchAnchorId, set: (value) => { activeBranchAnchorId = value; } },
+    editingBranchId: { get: () => editingBranchId, set: (value) => { editingBranchId = value; } },
+    pendingFollowUp: { get: () => pendingFollowUp, set: (value) => { pendingFollowUp = value; } },
+    pendingFollowUpTimer: { get: () => pendingFollowUpTimer, set: (value) => { pendingFollowUpTimer = value; } },
+    pendingFollowUpPollTimer: { get: () => pendingFollowUpPollTimer, set: (value) => { pendingFollowUpPollTimer = value; } },
+    sentQuestionStabilizeTimer: { get: () => sentQuestionStabilizeTimer, set: (value) => { sentQuestionStabilizeTimer = value; } },
+    catDockTucked: { get: () => catDockTucked, set: (value) => { catDockTucked = value; } },
+    catDockPosition: { get: () => catDockPosition, set: (value) => { catDockPosition = value; } },
+    tuckedCatTop: { get: () => tuckedCatTop, set: (value) => { tuckedCatTop = value; } },
+    catDragState: { get: () => catDragState, set: (value) => { catDragState = value; } },
+    catEyePointer: { get: () => catEyePointer, set: (value) => { catEyePointer = value; } },
+    catEyeFrame: { get: () => catEyeFrame, set: (value) => { catEyeFrame = value; } },
+    askAnchorSettings: { get: () => askAnchorSettings, set: (value) => { askAnchorSettings = value; } },
+    selectionTimer: { get: () => selectionTimer, set: (value) => { selectionTimer = value; } },
+    activeAnchorStorageKey: { get: () => activeAnchorStorageKey, set: (value) => { activeAnchorStorageKey = value; } },
+    activeBranchStorageKey: { get: () => activeBranchStorageKey, set: (value) => { activeBranchStorageKey = value; } },
+    conversationTimelineTimer: { get: () => conversationTimelineTimer, set: (value) => { conversationTimelineTimer = value; } },
+    conversationRootRefreshTimer: { get: () => conversationRootRefreshTimer, set: (value) => { conversationRootRefreshTimer = value; } },
+    anchorLoadTimer: { get: () => anchorLoadTimer, set: (value) => { anchorLoadTimer = value; } },
+    initialTimelineTimer: { get: () => initialTimelineTimer, set: (value) => { initialTimelineTimer = value; } },
+    askAnchorStarted: { get: () => askAnchorStarted, set: (value) => { askAnchorStarted = value; } },
+    platformDisabledBySettings: { get: () => platformDisabledBySettings, set: (value) => { platformDisabledBySettings = value; } },
+    observedConversationRoot: { get: () => observedConversationRoot, set: (value) => { observedConversationRoot = value; } },
+    lastObservedUrl: { get: () => lastObservedUrl, set: (value) => { lastObservedUrl = value; } }
   });
-  document.addEventListener("mouseup", handleSelectionChange);
-  document.addEventListener("keyup", (event) => {
-    if (event.key === "Escape") {
-      hideExplainButton();
-      closeAnchorList();
-      return;
-    }
 
-    handleSelectionChange();
+  const modules = globalThis.AskAnchorModules || {};
+  [
+    modules.core,
+    modules.selection,
+    modules.anchors,
+    modules.branches,
+    modules.timeline,
+    modules.catDock,
+    modules.dom
+  ].forEach((createModule) => {
+    if (typeof createModule === "function") {
+      Object.assign(ctx, createModule(ctx));
+    }
   });
-  document.addEventListener("click", handlePossibleSendClick, true);
-  document.addEventListener("keydown", handlePossibleSendKeydown, true);
-  window.addEventListener("resize", updateCatDockPosition);
-  window.addEventListener("scroll", updateCatDockPosition, { passive: true });
-  document.addEventListener("scroll", updateCatDockPosition, { passive: true, capture: true });
 
-  const conversationObserver = new MutationObserver(() => {
-    schedulePendingFollowUpCheck();
-    scheduleConversationTimelineRender();
-  });
-  conversationObserver.observe(document.documentElement, {
-    childList: true,
-    subtree: true
-  });
-  renderAnchorDock();
-  window.setTimeout(loadAnchorsFromSession, 500);
-  window.setTimeout(renderConversationTimeline, 900);
-  window.setInterval(handleConversationRouteChange, 800);
-
-  function handleSelectionChange() {
-    const selection = window.getSelection();
-    const text = selection ? selection.toString().trim() : "";
-
-    if (!selection || selection.rangeCount === 0 || text.length < MIN_SELECTION_LENGTH) {
-      hideExplainButton();
-      currentSelection = null;
-      return;
-    }
-
-    const range = selection.getRangeAt(0);
-    const messageElement = findAssistantMessageElement(range.commonAncestorContainer);
-    if (!messageElement) {
-      hideExplainButton();
-      currentSelection = null;
-      return;
-    }
-
-    currentSelection = {
-      text,
-      range: range.cloneRange(),
-      messageElement,
-      rect: getRangeRect(range)
-    };
-    lastValidSelection = currentSelection;
-
-    showExplainButton(currentSelection.rect);
-  }
-
-  function showExplainButton(rect) {
-    if (!rect) {
-      return;
-    }
-
-    let button = document.getElementById(BUTTON_ID);
-    if (!button) {
-      button = document.createElement("button");
-      button.id = BUTTON_ID;
-      button.type = "button";
-      button.textContent = "\u8ffd\u95ee\u8fd9\u4e00\u6bb5";
-      button.addEventListener("pointerdown", keepSelectionForButton);
-      button.addEventListener("mousedown", keepSelectionForButton);
-      button.addEventListener("click", handleAskClick);
-      document.documentElement.appendChild(button);
-    }
-
-    const left = Math.min(rect.left + window.scrollX, window.scrollX + window.innerWidth - 128);
-    const top = rect.bottom + window.scrollY + 8;
-    button.style.left = `${Math.max(window.scrollX + 8, left)}px`;
-    button.style.top = `${top}px`;
-    button.hidden = false;
-  }
-
-  function hideExplainButton() {
-    const button = document.getElementById(BUTTON_ID);
-    if (button) {
-      button.hidden = true;
-    }
-  }
-
-  function keepSelectionForButton(event) {
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
-  async function handleAskClick(event) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const selectionSnapshot = currentSelection || lastValidSelection;
-    if (!selectionSnapshot) {
-      return;
-    }
-
-    const sourceRange = selectionSnapshot.range.cloneRange();
-    const selector = serializeRange(sourceRange, selectionSnapshot.messageElement);
-    const marker = createSelectionMarker(sourceRange);
-    const anchor = addAnchor({
-      text: selectionSnapshot.text,
-      range: sourceRange,
-      selector,
-      marker,
-      element: selectionSnapshot.messageElement,
-      scrollY: window.scrollY
-    });
-    const knownUserElements = collectUserMessageElements();
-    const knownUserNodes = new Set(knownUserElements);
-    const knownUserTexts = new Set(knownUserElements.map((node) => normalizeComparableText(node.innerText || node.textContent || "")));
-    const prompt = buildFollowUpPrompt(selectionSnapshot.text);
-    const filled = await fillCurrentAiInput(prompt);
-
-    hideExplainButton();
-    renderAnchorDock();
-
-    if (filled) {
-      watchForSentFollowUp({
-        anchor,
-        prompt,
-        selectedText: selectionSnapshot.text,
-        knownUserNodes,
-        knownUserTexts
-      });
-      showToast(`\u5df2\u751f\u6210\u951a\u70b9\u300c${anchor.name}\u300d\uff0c\u5e76\u586b\u5165\u8ffd\u95ee`);
-      return;
-    }
-
-    await copyPromptToClipboard(prompt);
-    showToast(`\u5df2\u751f\u6210\u951a\u70b9\u300c${anchor.name}\u300d\uff0c\u672a\u627e\u5230\u8f93\u5165\u6846\uff0c\u5df2\u590d\u5236`);
-  }
-
-  function addAnchor({ text, range, selector, marker, element, scrollY }) {
-    const anchor = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      name: createAnchorName(text),
-      text,
-      range,
-      selector,
-      marker,
-      element,
-      scrollY,
-      createdAt: new Date()
-    };
-
-    anchors.unshift(anchor);
-    anchors = anchors.slice(0, MAX_ANCHORS);
-    persistAnchorsToSession();
-    return anchor;
-  }
-
-  function persistAnchorsToSession() {
-    try {
-      const payload = anchors.map((anchor) => ({
-        id: anchor.id,
-        name: anchor.name,
-        text: anchor.text,
-        selector: anchor.selector,
-        scrollY: anchor.scrollY,
-        createdAt: anchor.createdAt instanceof Date ? anchor.createdAt.toISOString() : anchor.createdAt
-      }));
-      sessionStorage.setItem(getAnchorStorageKey(), JSON.stringify(payload));
-    } catch (error) {
-      console.debug("[AskAnchor] Failed to persist anchors:", error);
-    }
-  }
-
-  function loadAnchorsFromSession() {
-    try {
-      activeAnchorStorageKey = getAnchorStorageKey();
-      const raw = sessionStorage.getItem(getAnchorStorageKey());
-      if (!raw) {
-        anchors = [];
-        activeAnchorId = null;
-        renderAnchorDock();
-        return;
-      }
-
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        anchors = [];
-        activeAnchorId = null;
-        renderAnchorDock();
-        return;
-      }
-
-      anchors = parsed.slice(0, MAX_ANCHORS).map((item) => ({
-        id: item.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        name: item.name || createAnchorName(item.text),
-        text: item.text || "",
-        selector: item.selector || null,
-        scrollY: typeof item.scrollY === "number" ? item.scrollY : window.scrollY,
-        createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
-        range: null,
-        marker: null,
-        element: document.body
-      }));
-      renderAnchorDock();
-    } catch (error) {
-      console.debug("[AskAnchor] Failed to load anchors:", error);
-    }
-  }
-
-  function getAnchorStorageKey() {
-    return `${STORAGE_KEY_PREFIX}${location.origin}${location.pathname}${location.search}`;
-  }
-
-  function handleConversationRouteChange() {
-    const nextKey = getAnchorStorageKey();
-    if (nextKey === activeAnchorStorageKey) {
-      return;
-    }
-
-    activeAnchorStorageKey = nextKey;
-    closeAnchorList();
-    loadAnchorsFromSession();
-    scheduleConversationTimelineRender();
-  }
-
-  function createAnchorName(text) {
-    const normalized = String(text || "").replace(/\s+/g, " ").trim();
-    if (normalized.length <= ANCHOR_NAME_LENGTH) {
-      return normalized || "\u672a\u547d\u540d\u951a\u70b9";
-    }
-
-    return `${normalized.slice(0, ANCHOR_NAME_LENGTH)}...`;
-  }
-
-  function renderAnchorDock() {
-    let dock = document.getElementById(DOCK_ID);
-    if (!dock) {
-      dock = document.createElement("div");
-      dock.id = DOCK_ID;
-      dock.innerHTML = `
-        <button class="ask-anchor-dock-button" type="button" aria-label="AskAnchor" aria-expanded="false">
-          <img class="ask-anchor-cat-image" alt="" aria-hidden="true">
-          <span class="ask-anchor-cat-blink ask-anchor-cat-blink--left" aria-hidden="true"></span>
-          <span class="ask-anchor-cat-blink ask-anchor-cat-blink--right" aria-hidden="true"></span>
-          <span class="ask-anchor-cat-hint" aria-hidden="true">\u53cc\u51fb\u9690\u85cf\u5c0f\u732b</span>
-        </button>
-        <div id="${LIST_ID}" class="ask-anchor-anchor-list" hidden></div>
-      `;
-      document.documentElement.appendChild(dock);
-
-      const catImage = dock.querySelector(".ask-anchor-cat-image");
-      catImage.src = CAT_IMAGE_URL;
-
-      const catButton = dock.querySelector(".ask-anchor-dock-button");
-      catButton.addEventListener("click", handleCatClick);
-      catButton.addEventListener("dblclick", tuckCatDock);
-      catButton.addEventListener("pointerdown", startCatDrag);
-    }
-
-    const button = dock.querySelector(".ask-anchor-dock-button");
-    const list = dock.querySelector(`#${LIST_ID}`);
-    button.title = `AskAnchor - ${anchors.length} \u4e2a\u951a\u70b9`;
-    list.innerHTML = "";
-
-    anchors.forEach((anchor, index) => {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = `ask-anchor-anchor-item${anchor.id === activeAnchorId ? " is-active" : ""}`;
-      item.setAttribute("aria-label", `\u8fd4\u56de\u951a\u70b9 ${index + 1}\uff1a${anchor.name}`);
-      item.innerHTML = `
-        <span class="ask-anchor-anchor-index" aria-hidden="true">
-          <span class="ask-anchor-paw__toe ask-anchor-paw__toe--one"></span>
-          <span class="ask-anchor-paw__toe ask-anchor-paw__toe--two"></span>
-          <span class="ask-anchor-paw__toe ask-anchor-paw__toe--three"></span>
-          <span class="ask-anchor-paw__toe ask-anchor-paw__toe--four"></span>
-          <span class="ask-anchor-paw__pad"></span>
-        </span>
-        <span class="ask-anchor-anchor-name"></span>
-      `;
-      item.querySelector(".ask-anchor-anchor-name").textContent = anchor.name;
-      item.addEventListener("click", () => {
-        closeAnchorList();
-        returnToAnchor(anchor.id);
-      });
-      list.appendChild(item);
-    });
-
-    renderConversationTimeline();
-    updateCatDockPosition();
-  }
-
-  function scheduleConversationTimelineRender() {
-    if (conversationTimelineTimer) {
-      return;
-    }
-
-    conversationTimelineTimer = window.setTimeout(() => {
-      conversationTimelineTimer = null;
-      renderConversationTimeline();
-    }, 350);
-  }
-
-  function renderConversationTimeline() {
-    let timeline = document.getElementById(TIMELINE_ID);
-    if (hasNativeConversationTimeline()) {
-      hideTimelinePreview();
-      if (timeline) {
-        timeline.remove();
-      }
-      return;
-    }
-
-    const messages = collectTimelineMessageElements();
-    if (messages.length === 0) {
-      hideTimelinePreview();
-      if (timeline) {
-        timeline.remove();
-      }
-      return;
-    }
-
-    if (!timeline) {
-      timeline = document.createElement("div");
-      timeline.id = TIMELINE_ID;
-      timeline.className = "ask-anchor-anchor-timeline";
-      timeline.setAttribute("aria-label", "AskAnchor timeline");
-      document.documentElement.appendChild(timeline);
-    }
-
-    timeline.innerHTML = "";
-    messages.forEach((message, index) => {
-      const preview = createTimelinePreview(message, index);
-      const tick = document.createElement("button");
-      tick.type = "button";
-      tick.className = "ask-anchor-timeline-tick";
-      tick.setAttribute("aria-label", `\u5b9a\u4f4d\u5230\u5bf9\u8bdd ${index + 1}\uff1a${preview.title}`);
-      tick.addEventListener("click", (event) => {
-        event.stopPropagation();
-        closeAnchorList();
-        scrollToConversationMessage(message);
-      });
-      tick.addEventListener("mouseenter", () => showTimelinePreview(tick, preview));
-      tick.addEventListener("focus", () => showTimelinePreview(tick, preview));
-      tick.addEventListener("mouseleave", hideTimelinePreview);
-      tick.addEventListener("blur", hideTimelinePreview);
-      timeline.appendChild(tick);
-    });
-  }
-
-  function hasNativeConversationTimeline() {
-    if (activeAdapter.name === "chatgpt") {
-      return true;
-    }
-
-    const nativeSelectors = [
-      "[data-testid*='timeline']",
-      "[aria-label*='timeline' i]",
-      "[aria-label*='\u65f6\u95f4\u8f74']",
-      "[class*='timeline' i]",
-      "[class*='conversation-nav' i]",
-      "[class*='scroll-spy' i]"
-    ];
-
-    return nativeSelectors.some((selector) => {
-      try {
-        return Array.from(document.querySelectorAll(selector))
-          .some((node) => !node.closest(`#${DOCK_ID}, #${TIMELINE_ID}, #${TIMELINE_PREVIEW_ID}`) && isVisible(node));
-      } catch (error) {
-        return false;
-      }
-    });
-  }
-
-  function collectTimelineMessageElements() {
-    const userMessages = collectUserMessageElements()
-      .filter((node) => document.contains(node))
-      .filter((node) => isVisible(node));
-
-    if (userMessages.length > 0) {
-      return userMessages.slice(0, 100);
-    }
-
-    return uniqueElements([
-      ...activeAdapter.messageSelectors,
-      "[data-message-author-role]",
-      "user-query",
-      "model-response",
-      "[data-testid*='message']",
-      "[class*='message']"
-    ].flatMap((selector) => {
-      try {
-        return Array.from(document.querySelectorAll(selector));
-      } catch (error) {
-        return [];
-      }
-    }))
-      .filter((node) => !isInsideEditable(node))
-      .filter((node) => isVisible(node))
-      .filter((node) => normalizeComparableText(node.innerText || node.textContent || "").length > 1)
-      .slice(0, 100);
-  }
-
-  function createTimelinePreview(message, index) {
-    const text = normalizeComparableText(message.innerText || message.textContent || "");
-    const fallbackTitle = `\u5bf9\u8bdd ${index + 1}`;
-    const title = text ? createAnchorName(text) : fallbackTitle;
-    const excerpt = text.length > 88 ? `${text.slice(0, 88)}...` : text;
-    return {
-      title,
-      excerpt: excerpt || fallbackTitle
-    };
-  }
-
-  function showTimelinePreview(tick, preview) {
-    let previewEl = document.getElementById(TIMELINE_PREVIEW_ID);
-    if (!previewEl) {
-      previewEl = document.createElement("div");
-      previewEl.id = TIMELINE_PREVIEW_ID;
-      previewEl.innerHTML = `
-        <div class="ask-anchor-timeline-preview__title"></div>
-        <div class="ask-anchor-timeline-preview__excerpt"></div>
-      `;
-      document.documentElement.appendChild(previewEl);
-    }
-
-    previewEl.querySelector(".ask-anchor-timeline-preview__title").textContent = preview.title;
-    previewEl.querySelector(".ask-anchor-timeline-preview__excerpt").textContent = preview.excerpt;
-
-    const rect = tick.getBoundingClientRect();
-    const width = Math.min(420, window.innerWidth - 32);
-    const left = Math.max(16, Math.min(window.innerWidth - width - 16, rect.left - width - 18));
-    const top = Math.max(16, Math.min(window.innerHeight - 120, rect.top - 42));
-
-    previewEl.style.width = `${width}px`;
-    previewEl.style.left = `${left}px`;
-    previewEl.style.top = `${top}px`;
-    previewEl.classList.add("is-visible");
-  }
-
-  function hideTimelinePreview() {
-    const previewEl = document.getElementById(TIMELINE_PREVIEW_ID);
-    if (previewEl) {
-      previewEl.classList.remove("is-visible");
-    }
-  }
-
-  function scrollToConversationMessage(message) {
-    if (!message || !document.contains(message)) {
-      return;
-    }
-
-    message.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-      inline: "nearest"
-    });
-    brieflyHighlight(message);
-  }
-
-  function handleCatClick(event) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (catDragState?.moved) {
-      return;
-    }
-
-    if (catDockTucked) {
-      untuckCatDock();
-      return;
-    }
-
-    toggleAnchorList();
-  }
-
-  function tuckCatDock(event) {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-
-    catDockTucked = true;
-    catDockPosition = null;
-    saveCatDockPosition(null);
-    closeAnchorList();
-    updateCatDockPosition();
-  }
-
-  function untuckCatDock() {
-    catDockTucked = false;
-    updateCatDockPosition();
-  }
-
-  function startCatDrag(event) {
-    if (event.button !== 0) {
-      return;
-    }
-
-    const dock = document.getElementById(DOCK_ID);
-    if (!dock) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    const rect = dock.getBoundingClientRect();
-    catDragState = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-      tucked: catDockTucked,
-      moved: false
-    };
-
-    dock.classList.add("is-dragging");
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    window.addEventListener("pointermove", moveCatDrag, true);
-    window.addEventListener("pointerup", endCatDrag, true);
-    window.addEventListener("pointercancel", endCatDrag, true);
-  }
-
-  function moveCatDrag(event) {
-    if (!catDragState || event.pointerId !== catDragState.pointerId) {
-      return;
-    }
-
-    const dx = event.clientX - catDragState.startX;
-    const dy = event.clientY - catDragState.startY;
-    if (Math.hypot(dx, dy) > 4) {
-      catDragState.moved = true;
-    }
-
-    const dock = document.getElementById(DOCK_ID);
-    if (!dock) {
-      return;
-    }
-
-    if (catDragState.tucked) {
-      const height = dock.offsetHeight || 84;
-      tuckedCatTop = clamp(event.clientY - catDragState.offsetY, 8, window.innerHeight - height - 8);
-      applyTuckedCatDockPosition(dock);
-      return;
-    }
-
-    const editor = findPromptEditor();
-    const editorRect = editor?.getBoundingClientRect?.();
-
-    if (editorRect && editorRect.width > 0 && editorRect.height > 0) {
-      catDockPosition = createCatPositionFromPointer(event, editorRect);
-      applyCatDockPosition(dock, getCatDockViewportPosition(catDockPosition, editorRect));
-      return;
-    }
-
-    const width = dock.offsetWidth || 76;
-    const height = dock.offsetHeight || 44;
-    const left = clamp(event.clientX - catDragState.offsetX, 4, window.innerWidth - width - 4);
-    const top = clamp(event.clientY - catDragState.offsetY, 4, window.innerHeight - height - 4);
-    catDockPosition = { mode: "free", left, top };
-    applyCatDockPosition(dock, catDockPosition);
-  }
-
-  function endCatDrag(event) {
-    if (!catDragState || event.pointerId !== catDragState.pointerId) {
-      return;
-    }
-
-    const dock = document.getElementById(DOCK_ID);
-    if (dock) {
-      dock.classList.remove("is-dragging");
-    }
-
-    if (catDragState.moved && catDragState.tucked) {
-      saveTuckedCatTop(tuckedCatTop);
-      window.setTimeout(() => {
-        catDragState = null;
-      }, 0);
-    } else if (catDragState.moved && catDockPosition) {
-      saveCatDockPosition(catDockPosition);
-      window.setTimeout(() => {
-        catDragState = null;
-      }, 0);
-    } else {
-      catDragState = null;
-    }
-
-    window.removeEventListener("pointermove", moveCatDrag, true);
-    window.removeEventListener("pointerup", endCatDrag, true);
-    window.removeEventListener("pointercancel", endCatDrag, true);
-  }
-
-  function toggleAnchorList() {
-    const dock = document.getElementById(DOCK_ID);
-    if (!dock) {
-      return;
-    }
-
-    const button = dock.querySelector(".ask-anchor-dock-button");
-    const list = dock.querySelector(`#${LIST_ID}`);
-    const willOpen = list.hidden;
-    if (anchors.length === 0) {
-      list.hidden = true;
-      button.setAttribute("aria-expanded", "false");
-      showToast("\u5f53\u524d\u5bf9\u8bdd\u8fd8\u6ca1\u6709 AskAnchor \u951a\u70b9");
-      return;
-    }
-    list.hidden = !willOpen;
-    button.setAttribute("aria-expanded", String(willOpen));
-    updateCatDockPosition();
-  }
-
-  function closeAnchorList() {
-    const dock = document.getElementById(DOCK_ID);
-    if (!dock) {
-      return;
-    }
-
-    const button = dock.querySelector(".ask-anchor-dock-button");
-    const list = dock.querySelector(`#${LIST_ID}`);
-    if (list) {
-      list.hidden = true;
-    }
-    if (button) {
-      button.setAttribute("aria-expanded", "false");
-    }
-  }
-
-  function updateCatDockPosition() {
-    const dock = document.getElementById(DOCK_ID);
-    if (!dock) {
-      return;
-    }
-
-    dock.classList.toggle("is-tucked", catDockTucked);
-    updateCatImage(dock);
-    updateCatHint(dock);
-    if (catDockTucked) {
-      applyTuckedCatDockPosition(dock);
-      return;
-    }
-
-    if (catDockPosition) {
-      const editor = findPromptEditor();
-      const editorRect = editor?.getBoundingClientRect?.();
-      const safePosition = getCatDockViewportPosition(catDockPosition, editorRect);
-      applyCatDockPosition(dock, safePosition);
-      return;
-    }
-
-    const editor = findPromptEditor();
-    if (!editor) {
-      dock.style.removeProperty("--ask-anchor-cat-left");
-      dock.style.removeProperty("--ask-anchor-cat-right");
-      dock.style.removeProperty("--ask-anchor-cat-top");
-      dock.style.removeProperty("bottom");
-      return;
-    }
-
-    const rect = editor.getBoundingClientRect();
-    if (!rect || rect.width <= 0 || rect.height <= 0) {
-      return;
-    }
-
-    const catWidth = 76;
-    const left = Math.min(window.innerWidth - catWidth - 8, Math.max(8, rect.right - catWidth - 96));
-    const top = Math.min(window.innerHeight - 50, Math.max(8, rect.top - 40));
-    dock.style.setProperty("--ask-anchor-cat-left", `${left}px`);
-    dock.style.setProperty("--ask-anchor-cat-right", "auto");
-    dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
-    dock.style.removeProperty("bottom");
-  }
-
-  function createCatPositionFromPointer(event, editorRect) {
-    const catWidth = 76;
-    const x = clamp(event.clientX - catDragState.offsetX + catWidth / 2, editorRect.left + 28, editorRect.right - 28);
-    const ratio = editorRect.width > 0 ? (x - editorRect.left) / editorRect.width : 0.82;
-    const rawOffsetY = event.clientY - catDragState.offsetY - (editorRect.top - 40);
-    const offsetY = clamp(rawOffsetY, -6, 6);
-
-    return {
-      mode: "editor-edge",
-      ratio: clamp(ratio, 0.08, 0.92),
-      offsetY
-    };
-  }
-
-  function getCatDockViewportPosition(position, editorRect) {
-    if (position?.mode === "editor-edge" && editorRect && editorRect.width > 0 && editorRect.height > 0) {
-      const catWidth = 76;
-      const ratio = clamp(position.ratio ?? 0.82, 0.08, 0.92);
-      const left = clamp(editorRect.left + editorRect.width * ratio - catWidth / 2, 4, window.innerWidth - catWidth - 4);
-      const top = clamp(editorRect.top - 40 + (position.offsetY || 0), 4, window.innerHeight - 44 - 4);
-      return { left, top };
-    }
-
-    return {
-      left: clamp(position?.left ?? window.innerWidth - 96, 4, window.innerWidth - 76),
-      top: clamp(position?.top ?? window.innerHeight - 120, 4, window.innerHeight - 44)
-    };
-  }
-
-  function applyCatDockPosition(dock, position) {
-    dock.style.setProperty("--ask-anchor-cat-left", `${position.left}px`);
-    dock.style.setProperty("--ask-anchor-cat-right", "auto");
-    dock.style.setProperty("--ask-anchor-cat-top", `${position.top}px`);
-    dock.style.removeProperty("bottom");
-  }
-
-  function applyTuckedCatDockPosition(dock) {
-    const height = dock.offsetHeight || 84;
-    const top = clamp(tuckedCatTop ?? window.innerHeight - height - 86, 8, window.innerHeight - height - 8);
-    tuckedCatTop = top;
-    dock.style.removeProperty("--ask-anchor-cat-left");
-    dock.style.setProperty("--ask-anchor-cat-right", "-8px");
-    dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
-    dock.style.removeProperty("bottom");
-  }
-
-  function updateCatImage(dock) {
-    const catImage = dock.querySelector(".ask-anchor-cat-image");
-    if (!catImage) {
-      return;
-    }
-
-    const nextSrc = catDockTucked ? CAT_PEEK_IMAGE_URL : CAT_IMAGE_URL;
-    if (catImage.src !== nextSrc) {
-      catImage.src = nextSrc;
-    }
-  }
-
-  function updateCatHint(dock) {
-    const hint = dock.querySelector(".ask-anchor-cat-hint");
-    if (!hint) {
-      return;
-    }
-
-    hint.textContent = catDockTucked ? "点击唤回" : "双击隐藏小猫";
-  }
-
-  function loadCatDockPosition() {
-    try {
-      const raw = localStorage.getItem(CAT_POSITION_STORAGE_KEY);
-      if (!raw) {
-        return null;
-      }
-      const value = JSON.parse(raw);
-      if (
-        value?.mode === "editor-edge"
-        && typeof value.ratio === "number"
-        && typeof value.offsetY === "number"
-      ) {
-        return value;
-      }
-      if (typeof value?.left !== "number" || typeof value?.top !== "number") {
-        return null;
-      }
-      return { mode: "free", left: value.left, top: value.top };
-    } catch (error) {
-      return null;
-    }
-  }
-
-  function saveCatDockPosition(position) {
-    try {
-      if (!position) {
-        localStorage.removeItem(CAT_POSITION_STORAGE_KEY);
-        return;
-      }
-      localStorage.setItem(CAT_POSITION_STORAGE_KEY, JSON.stringify(position));
-    } catch (error) {
-      console.debug("[AskAnchor] Failed to save cat position:", error);
-    }
-  }
-
-  function loadTuckedCatTop() {
-    try {
-      const value = Number(localStorage.getItem(TUCKED_CAT_TOP_STORAGE_KEY));
-      return Number.isFinite(value) ? value : null;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  function saveTuckedCatTop(top) {
-    try {
-      if (!Number.isFinite(top)) {
-        localStorage.removeItem(TUCKED_CAT_TOP_STORAGE_KEY);
-        return;
-      }
-      localStorage.setItem(TUCKED_CAT_TOP_STORAGE_KEY, String(Math.round(top)));
-    } catch (error) {
-      console.debug("[AskAnchor] Failed to save tucked cat position:", error);
-    }
-  }
-
-  function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-  }
-
-  function returnToAnchor(id) {
-    const anchor = anchors.find((item) => item.id === id);
-    if (!anchor) {
-      return;
-    }
-
-    activeAnchorId = id;
-    renderAnchorDock();
-
-    const restoredRange = resolveAnchorRange(anchor);
-    if (restoredRange && scrollToSavedRange(restoredRange)) {
-      anchor.range = restoredRange.cloneRange();
-      restoreSelectionHighlight(restoredRange);
-      brieflyHighlight(getRangeHighlightTarget(restoredRange) || anchor.element);
-      return;
-    }
-
-    const marker = anchor.marker && document.contains(anchor.marker) ? anchor.marker : null;
-    const target = anchor.element && document.contains(anchor.element) ? anchor.element : null;
-
-    if (marker) {
-      marker.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-      brieflyHighlight(target || marker);
-      restoreSelectionHighlight(anchor.range);
-      return;
-    }
-
-    if (scrollToSavedRange(anchor.range)) {
-      restoreSelectionHighlight(anchor.range);
-      brieflyHighlight(target || document.documentElement);
-      return;
-    }
-
-    if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
-      brieflyHighlight(target);
-      return;
-    }
-
-    window.scrollTo({ top: anchor.scrollY, behavior: "smooth" });
-  }
-
-  function watchForSentFollowUp({ anchor, prompt, selectedText, knownUserNodes, knownUserTexts }) {
-    pendingFollowUp = {
-      anchorId: anchor.id,
-      prompt,
-      selectedText,
-      knownUserNodes,
-      knownUserTexts,
-      editor: findPromptEditor(),
-      waitingForSend: true,
-      createdAt: Date.now()
-    };
-  }
-
-  function schedulePendingFollowUpCheck() {
-    if (!pendingFollowUp || pendingFollowUp.waitingForSend || pendingFollowUpTimer) {
-      return;
-    }
-
-    pendingFollowUpTimer = window.setTimeout(() => {
-      pendingFollowUpTimer = null;
-      checkPendingFollowUp();
-    }, 180);
-  }
-
-  function checkPendingFollowUp() {
-    if (!pendingFollowUp) {
-      return;
-    }
-
-    const searchStartedAt = pendingFollowUp.sentAt || pendingFollowUp.createdAt;
-    if (Date.now() - searchStartedAt > 90 * 1000) {
-      clearPendingFollowUp();
-      return;
-    }
-
-    const sentQuestion = findSentFollowUpElement(pendingFollowUp);
-    if (!sentQuestion) {
-      return;
-    }
-
-    focusSentQuestion(sentQuestion);
-    clearPendingFollowUp();
-  }
-
-  function findSentFollowUpElement(followUp) {
-    const userMessages = collectUserMessageElements();
-    const matchingNode = userMessages
-      .filter((node) => !followUp.knownUserNodes.has(node))
-      .find((node) => isMatchingFollowUpText(node.innerText || node.textContent || "", followUp));
-
-    if (matchingNode) {
-      return matchingNode;
-    }
-
-    const newMessages = userMessages.filter((node) => {
-      const text = normalizeComparableText(node.innerText || node.textContent || "");
-      return !followUp.knownUserNodes.has(node) && !followUp.knownUserTexts.has(text);
-    });
-
-    if (newMessages.length > 0 && isPromptEditorCleared(followUp.editor)) {
-      return newMessages[newMessages.length - 1];
-    }
-
-    return null;
-  }
-
-  function isMatchingFollowUpText(text, followUp) {
-    const normalizedText = normalizeComparableText(text);
-    if (!normalizedText) {
-      return false;
-    }
-
-    const selectedText = normalizeComparableText(followUp.selectedText);
-    const selectedFragment = selectedText.slice(0, Math.min(80, selectedText.length));
-    const promptHead = normalizeComparableText(followUp.prompt).slice(0, 80);
-
-    return Boolean(
-      selectedFragment && normalizedText.includes(selectedFragment)
-      || promptHead && normalizedText.includes(promptHead)
-    );
-  }
-
-  function startPendingFollowUpPolling() {
-    window.clearInterval(pendingFollowUpPollTimer);
-    pendingFollowUpPollTimer = window.setInterval(() => {
-      if (!pendingFollowUp) {
-        window.clearInterval(pendingFollowUpPollTimer);
-        pendingFollowUpPollTimer = null;
-        return;
-      }
-
-      checkPendingFollowUp();
-    }, 700);
-  }
-
-  function markPendingFollowUpSent() {
-    if (!pendingFollowUp || !pendingFollowUp.waitingForSend) {
-      return;
-    }
-
-    pendingFollowUp.waitingForSend = false;
-    pendingFollowUp.sentAt = Date.now();
-    schedulePendingFollowUpCheck();
-    startPendingFollowUpPolling();
-  }
-
-  function handlePossibleSendClick(event) {
-    if (!pendingFollowUp || !pendingFollowUp.waitingForSend) {
-      return;
-    }
-
-    const button = event.target && event.target.closest ? event.target.closest("button, [role='button']") : null;
-    if (button && isSendControl(button)) {
-      window.setTimeout(markPendingFollowUpSent, 120);
-    }
-  }
-
-  function handlePossibleSendKeydown(event) {
-    if (!pendingFollowUp || !pendingFollowUp.waitingForSend) {
-      return;
-    }
-
-    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
-      const editor = pendingFollowUp.editor && document.contains(pendingFollowUp.editor)
-        ? pendingFollowUp.editor
-        : findPromptEditor();
-
-      if (editor && (event.target === editor || editor.contains(event.target))) {
-        window.setTimeout(markPendingFollowUpSent, 120);
-      }
-    }
-  }
-
-  function isSendControl(element) {
-    const haystack = [
-      element.getAttribute("aria-label"),
-      element.getAttribute("data-testid"),
-      element.getAttribute("title"),
-      element.textContent,
-      element.className,
-      element.id
-    ].join(" ").toLowerCase();
-
-    return /send|submit|arrow-up|paper-airplane|\u53d1\u9001|\u9001\u51fa|\u63d0\u4ea4/.test(haystack);
-  }
-
-  function clearPendingFollowUp() {
-    pendingFollowUp = null;
-    window.clearTimeout(pendingFollowUpTimer);
-    window.clearInterval(pendingFollowUpPollTimer);
-    pendingFollowUpTimer = null;
-    pendingFollowUpPollTimer = null;
-  }
-
-  function isPromptEditorCleared(editor) {
-    if (!editor || !document.contains(editor)) {
-      editor = findPromptEditor();
-    }
-
-    return normalizeComparableText(getEditorText(editor)).length < 2;
-  }
-
-  function getEditorText(editor) {
-    if (!editor) {
-      return "";
-    }
-
-    if (editor.tagName === "TEXTAREA" || editor.tagName === "INPUT") {
-      return editor.value || "";
-    }
-
-    return editor.innerText || editor.textContent || "";
-  }
-
-  function focusSentQuestion(element) {
-    window.clearInterval(sentQuestionStabilizeTimer);
-
-    let attempts = 0;
-    const keepInView = () => {
-      if (!element || !document.contains(element)) {
-        window.clearInterval(sentQuestionStabilizeTimer);
-        sentQuestionStabilizeTimer = null;
-        return;
-      }
-
-      element.scrollIntoView({
-        behavior: attempts === 0 ? "smooth" : "auto",
-        block: "center",
-        inline: "nearest"
-      });
-
-      if (attempts === 0) {
-        brieflyHighlight(element);
-      }
-
-      attempts += 1;
-      if (attempts >= 6) {
-        window.clearInterval(sentQuestionStabilizeTimer);
-        sentQuestionStabilizeTimer = null;
-      }
-    };
-
-    keepInView();
-    sentQuestionStabilizeTimer = window.setInterval(keepInView, 450);
-  }
-
-  function buildFollowUpPrompt(selectedText) {
-    return [
-      "\u8bf7\u89e3\u91ca\u6211\u5728\u4e0a\u6587\u4e2d\u9009\u4e2d\u7684\u8fd9\u6bb5\u5185\u5bb9\uff1a",
-      "",
-      "\u3010\u9009\u4e2d\u5185\u5bb9\u3011",
-      selectedText,
-      "",
-      "\u8bf7\u8bf4\u660e\u5b83\u7684\u610f\u601d\u3001\u548c\u4e0a\u6587\u7684\u5173\u7cfb\uff0c\u4ee5\u53ca\u6211\u5e94\u8be5\u5982\u4f55\u7406\u89e3\u5b83\u3002"
-    ].join("\n");
-  }
-
-  async function fillCurrentAiInput(prompt) {
-    const editor = await waitForPromptEditor();
-    if (!editor) {
-      return false;
-    }
-
-    fillPromptEditor(editor, prompt);
-    return true;
-  }
-
-  async function waitForPromptEditor() {
-    const deadline = Date.now() + 3500;
-    while (Date.now() < deadline) {
-      const editor = findPromptEditor();
-      if (editor) {
-        return editor;
-      }
-
-      await delay(180);
-    }
-
-    return null;
-  }
-
-  function findPromptEditor() {
-    const selectors = [
-      "#prompt-textarea",
-      "textarea[data-testid='prompt-textarea']",
-      "[data-testid='chat-input'] textarea",
-      "[data-testid='composer'] textarea",
-      "[aria-label*='Message']",
-      "[aria-label*='Ask']",
-      "[aria-label*='Send']",
-      "[aria-label*='\u8f93\u5165']",
-      "[aria-label*='\u63d0\u95ee']",
-      "[placeholder*='Message']",
-      "[placeholder*='Ask']",
-      "[placeholder*='\u8f93\u5165']",
-      "[placeholder*='\u63d0\u95ee']",
-      "textarea",
-      "[contenteditable='true'][data-lexical-editor='true']",
-      "[contenteditable='true'][role='textbox']",
-      "[contenteditable='true']"
-    ];
-
-    return selectors
-      .map((selector) => document.querySelector(selector))
-      .find((node) => (
-        node
-        && isPromptEditorCandidate(node)
-        && !node.closest(`#${DOCK_ID}, #${BUTTON_ID}, #${TOAST_ID}`)
-        && isVisible(node)
-      ));
-  }
-
-  function isPromptEditorCandidate(node) {
-    return node.tagName === "TEXTAREA"
-      || node.tagName === "INPUT"
-      || node.getAttribute("contenteditable") === "true"
-      || node.getAttribute("role") === "textbox";
-  }
-
-  function fillPromptEditor(editor, prompt) {
-    editor.focus();
-
-    if (editor.tagName === "TEXTAREA" || editor.tagName === "INPUT") {
-      const setter = Object.getOwnPropertyDescriptor(editor.constructor.prototype, "value")?.set;
-      if (setter) {
-        setter.call(editor, prompt);
-      } else {
-        editor.value = prompt;
-      }
-
-      editor.dispatchEvent(new InputEvent("input", {
-        bubbles: true,
-        inputType: "insertText",
-        data: prompt
-      }));
-      editor.dispatchEvent(new Event("change", { bubbles: true }));
-      return;
-    }
-
-    const selection = window.getSelection();
-    const range = document.createRange();
-    editor.textContent = "";
-    range.selectNodeContents(editor);
-    selection.removeAllRanges();
-    selection.addRange(range);
-
-    if (!document.execCommand("insertText", false, prompt)) {
-      editor.textContent = prompt;
-    }
-
-    editor.dispatchEvent(new InputEvent("input", {
-      bubbles: true,
-      inputType: "insertText",
-      data: prompt
-    }));
-  }
-
-  async function copyPromptToClipboard(prompt) {
-    try {
-      await navigator.clipboard.writeText(prompt);
-    } catch (error) {
-      console.debug("[AskAnchor] Clipboard fallback failed:", error);
-    }
-  }
-
-  function createSelectionMarker(range) {
-    const marker = document.createElement("span");
-    marker.className = MARKER_CLASS;
-    marker.setAttribute("aria-hidden", "true");
-    marker.dataset.askAnchor = "selection-marker";
-
-    try {
-      const markerRange = range.cloneRange();
-      markerRange.collapse(true);
-      markerRange.insertNode(marker);
-      return marker;
-    } catch (error) {
-      console.debug("[AskAnchor] Failed to create selection marker:", error);
-      return null;
-    }
-  }
-
-  function serializeRange(range, root) {
-    if (!range || !root) {
-      return null;
-    }
-
-    const snapshot = collectVisibleText(root);
-    if (!snapshot.text) {
-      return null;
-    }
-
-    const start = getTextOffsetInNodes(range.startContainer, range.startOffset, snapshot.nodes);
-    const end = getTextOffsetInNodes(range.endContainer, range.endOffset, snapshot.nodes);
-    if (start < 0 || end < start) {
-      return null;
-    }
-
-    return {
-      exact: range.toString(),
-      prefix: snapshot.text.slice(Math.max(0, start - SELECTION_CONTEXT_LENGTH), start),
-      suffix: snapshot.text.slice(end, end + SELECTION_CONTEXT_LENGTH),
-      start,
-      end
-    };
-  }
-
-  function resolveAnchorRange(anchor) {
-    if (anchor.range && isRangeUsable(anchor.range)) {
-      return anchor.range.cloneRange();
-    }
-
-    if (!anchor.selector) {
-      return null;
-    }
-
-    const root = anchor.element && document.contains(anchor.element) ? anchor.element : document.body;
-    return findRangeFromSelector(anchor.selector, root) || findRangeFromSelector(anchor.selector, document.body);
-  }
-
-  function findRangeFromSelector(selector, root) {
-    const snapshot = collectVisibleText(root);
-    if (!selector || !selector.exact || !snapshot.text) {
-      return null;
-    }
-
-    const normalizedStartRange = Math.max(0, Math.min(selector.start || 0, snapshot.text.length));
-    const candidates = [];
-    let index = snapshot.text.indexOf(selector.exact, Math.max(0, normalizedStartRange - 500));
-    while (index !== -1) {
-      candidates.push(index);
-      index = snapshot.text.indexOf(selector.exact, index + 1);
-    }
-
-    if (candidates.length === 0) {
-      index = snapshot.text.indexOf(selector.exact);
-      while (index !== -1) {
-        candidates.push(index);
-        index = snapshot.text.indexOf(selector.exact, index + 1);
-      }
-    }
-
-    const bestStart = candidates
-      .map((start) => ({
-        start,
-        score: scoreSelectorMatch(snapshot.text, selector, start)
-      }))
-      .sort((a, b) => b.score - a.score || Math.abs(a.start - normalizedStartRange) - Math.abs(b.start - normalizedStartRange))[0]?.start;
-
-    if (typeof bestStart !== "number") {
-      return null;
-    }
-
-    return createRangeFromOffsets(snapshot.nodes, bestStart, bestStart + selector.exact.length);
-  }
-
-  function scoreSelectorMatch(text, selector, start) {
-    let score = 0;
-    const prefixStart = Math.max(0, start - (selector.prefix || "").length);
-    const prefix = text.slice(prefixStart, start);
-    const suffix = text.slice(start + selector.exact.length, start + selector.exact.length + (selector.suffix || "").length);
-
-    if (selector.prefix && prefix.endsWith(selector.prefix)) {
-      score += 3;
-    }
-    if (selector.suffix && suffix.startsWith(selector.suffix)) {
-      score += 3;
-    }
-    score -= Math.min(2, Math.abs(start - (selector.start || 0)) / 1000);
-    return score;
-  }
-
-  function collectVisibleText(root) {
-    const nodes = [];
-    const textParts = [];
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode: (node) => {
-        if (!node.textContent || !node.textContent.trim()) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        if (!isVisibleTextNode(node)) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    });
-
-    let node = walker.nextNode();
-    while (node) {
-      nodes.push(node);
-      textParts.push(node.textContent);
-      node = walker.nextNode();
-    }
-
-    return {
-      nodes,
-      text: textParts.join("")
-    };
-  }
-
-  function isVisibleTextNode(node) {
-    let element = node.parentElement;
-    while (element && element !== document.documentElement) {
-      if (element.closest?.(`#${DOCK_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
-        return false;
-      }
-      if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "IFRAME"].includes(element.tagName)) {
-        return false;
-      }
-      const style = window.getComputedStyle(element);
-      if (style.display === "none" || style.visibility === "hidden") {
-        return false;
-      }
-      element = element.parentElement;
-    }
-    return true;
-  }
-
-  function getTextOffsetInNodes(container, offset, nodes) {
-    let total = 0;
-    for (const node of nodes) {
-      if (node === container) {
-        return total + offset;
-      }
-      if (container.nodeType === Node.ELEMENT_NODE && container.contains(node)) {
-        const child = getDirectChildContaining(container, node);
-        const childIndex = child ? Array.prototype.indexOf.call(container.childNodes, child) : -1;
-        if (childIndex >= offset) {
-          return total;
-        }
-      }
-      total += node.textContent.length;
-    }
-    return -1;
-  }
-
-  function getDirectChildContaining(parent, node) {
-    let child = node;
-    while (child && child.parentNode !== parent) {
-      child = child.parentNode;
-    }
-    return child || null;
-  }
-
-  function createRangeFromOffsets(nodes, start, end) {
-    const startPoint = findTextPoint(nodes, start);
-    const endPoint = findTextPoint(nodes, end);
-    if (!startPoint || !endPoint) {
-      return null;
-    }
-
-    const range = document.createRange();
-    range.setStart(startPoint.node, startPoint.offset);
-    range.setEnd(endPoint.node, endPoint.offset);
-    return range;
-  }
-
-  function findTextPoint(nodes, offset) {
-    let remaining = offset;
-    for (const node of nodes) {
-      const length = node.textContent.length;
-      if (remaining <= length) {
-        return {
-          node,
-          offset: Math.max(0, Math.min(remaining, length))
-        };
-      }
-      remaining -= length;
-    }
-
-    const last = nodes[nodes.length - 1];
-    return last ? { node: last, offset: last.textContent.length } : null;
-  }
-
-  function scrollToSavedRange(range) {
-    if (!range) {
-      return false;
-    }
-
-    try {
-      const rect = getRangeRect(range);
-      if (!rect) {
-        return false;
-      }
-
-      scrollRectToCenter(rect);
-      return true;
-    } catch (error) {
-      console.debug("[AskAnchor] Failed to scroll to saved range:", error);
-      return false;
-    }
-  }
-
-  function isRangeUsable(range) {
-    try {
-      return Boolean(range && getRangeRect(range) && document.contains(range.commonAncestorContainer));
-    } catch (error) {
-      return false;
-    }
-  }
-
-  function scrollRectToCenter(rect) {
-    const container = findScrollContainerForRect(rect);
-    if (!container || container === document.documentElement || container === document.body) {
-      const top = rect.top + window.scrollY - window.innerHeight * 0.42;
-      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
-      return;
-    }
-
-    const containerRect = container.getBoundingClientRect();
-    const topDelta = rect.top - containerRect.top - container.clientHeight * 0.42 + rect.height / 2;
-    container.scrollTo({
-      top: Math.max(0, container.scrollTop + topDelta),
-      behavior: "smooth"
-    });
-  }
-
-  function findScrollContainerForRect(rect) {
-    const centerX = Math.max(0, Math.min(window.innerWidth - 1, rect.left + rect.width / 2));
-    const centerY = Math.max(0, Math.min(window.innerHeight - 1, rect.top + rect.height / 2));
-    let element = document.elementFromPoint(centerX, centerY);
-
-    while (element && element !== document.documentElement) {
-      const style = window.getComputedStyle(element);
-      const canScroll = /(auto|scroll|overlay)/.test(`${style.overflowY} ${style.overflow}`);
-      if (canScroll && element.scrollHeight > element.clientHeight + 8) {
-        return element;
-      }
-      element = element.parentElement;
-    }
-
-    return document.scrollingElement || document.documentElement;
-  }
-
-  function restoreSelectionHighlight(range) {
-    if (!range) {
-      return;
-    }
-
-    try {
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-    } catch (error) {
-      console.debug("[AskAnchor] Failed to restore selection:", error);
-    }
-  }
-
-  function brieflyHighlight(element) {
-    if (!element || element === document.documentElement) {
-      return;
-    }
-
-    element.classList.add(HIGHLIGHT_CLASS);
-    window.setTimeout(() => {
-      element.classList.remove(HIGHLIGHT_CLASS);
-    }, 1400);
-  }
-
-  function getRangeHighlightTarget(range) {
-    if (!range) {
-      return null;
-    }
-
-    const container = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
-      ? range.commonAncestorContainer
-      : range.commonAncestorContainer.parentElement;
-
-    return container?.closest?.("p, li, blockquote, pre, code, .markdown, .prose, [data-message-author-role], article, section, div") || container;
-  }
-
-  function showToast(message) {
-    let toast = document.getElementById(TOAST_ID);
-    if (!toast) {
-      toast = document.createElement("div");
-      toast.id = TOAST_ID;
-      document.documentElement.appendChild(toast);
-    }
-
-    toast.textContent = message;
-    toast.hidden = false;
-    toast.classList.remove("is-hiding");
-    toast.classList.add("is-visible");
-    window.clearTimeout(showToast.timer);
-    window.clearTimeout(showToast.hideTimer);
-    showToast.timer = window.setTimeout(() => {
-      toast.classList.add("is-hiding");
-      toast.classList.remove("is-visible");
-    }, 3600);
-    showToast.hideTimer = window.setTimeout(() => {
-      toast.hidden = true;
-      toast.classList.remove("is-hiding");
-    }, 4000);
-  }
-
-  function findAssistantMessageElement(node) {
-    const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-    if (!element || isInsideEditable(element) || element.closest(`#${DOCK_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
-      return null;
-    }
-
-    const platformMatch = closestFromSelectors(element, activeAdapter.assistantSelectors);
-    if (platformMatch && !isInsideUserMessage(platformMatch)) {
-      return platformMatch;
-    }
-
-    const genericMatch = closestFromSelectors(element, [
-      "[data-message-author-role='assistant']",
-      "model-response",
-      "[data-testid*='assistant']",
-      "[data-testid*='answer']",
-      "[data-content='ai-message']",
-      ".markdown",
-      ".prose",
-      "[class*='assistant']",
-      "[class*='answer']",
-      "[class*='response']",
-      "[class*='markdown']"
-    ]);
-
-    if (genericMatch && !isInsideUserMessage(genericMatch) && !isInsideEditable(genericMatch)) {
-      return genericMatch;
-    }
-
-    return null;
-  }
-
-  function collectUserMessageElements() {
-    const selectors = [
-      ...activeAdapter.userSelectors,
-      "[data-message-author-role='user']",
-      "user-query",
-      "[data-content='user-message']",
-      "[data-testid*='user']",
-      "[data-testid*='query']",
-      "[class*='user']",
-      "[class*='human']",
-      "[class*='question']",
-      "[class*='query']"
-    ];
-
-    return uniqueElements(selectors.flatMap((selector) => {
-      try {
-        return Array.from(document.querySelectorAll(selector));
-      } catch (error) {
-        console.debug("[AskAnchor] Ignored invalid user selector:", selector, error);
-        return [];
-      }
-    }))
-      .filter((node) => !isInsideEditable(node))
-      .filter((node) => normalizeComparableText(node.innerText || node.textContent || "").length > 1);
-  }
-
-  function getActiveAdapter() {
-    const hostname = location.hostname;
-    return PLATFORM_ADAPTERS.find((adapter) => adapter.hosts.includes(hostname)) || {
-      name: "generic",
-      assistantSelectors: [],
-      userSelectors: [],
-      messageSelectors: [],
-      roleFromNode: (node) => inferRoleFromNode(node)
-    };
-  }
-
-  function inferRoleFromNode(node) {
-    const haystack = [
-      node.getAttribute("data-message-author-role"),
-      node.getAttribute("data-testid"),
-      node.getAttribute("data-content"),
-      node.getAttribute("aria-label"),
-      node.className,
-      node.id
-    ].join(" ").toLowerCase();
-
-    if (/(user|human|query|question|prompt)/.test(haystack)) {
-      return "user";
-    }
-
-    if (/(assistant|bot|ai|answer|response|model)/.test(haystack)) {
-      return "assistant";
-    }
-
-    return "assistant";
-  }
-
-  function isInsideUserMessage(element) {
-    const userSelectors = [
-      ...activeAdapter.userSelectors,
-      "[data-message-author-role='user']",
-      "user-query",
-      "[data-content='user-message']",
-      "[data-testid*='user']",
-      "[data-testid*='query']",
-      "[class*='user']",
-      "[class*='human']",
-      "[class*='question']",
-      "[class*='query']"
-    ];
-
-    return Boolean(closestFromSelectors(element, userSelectors));
-  }
-
-  function isInsideEditable(element) {
-    return Boolean(element.closest([
-      "textarea",
-      "input",
-      "select",
-      "button",
-      "[contenteditable='true']",
-      "[role='textbox']",
-      "[data-lexical-editor='true']"
-    ].join(",")));
-  }
-
-  function isVisible(node) {
-    const rect = node.getBoundingClientRect();
-    const style = window.getComputedStyle(node);
-    return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
-  }
-
-  function closestFromSelectors(element, selectors) {
-    for (const selector of selectors.filter(Boolean)) {
-      try {
-        const match = element.closest(selector);
-        if (match) {
-          return match;
-        }
-      } catch (error) {
-        console.debug("[AskAnchor] Ignored invalid selector:", selector, error);
-      }
-    }
-
-    return null;
-  }
-
-  function uniqueElements(elements) {
-    return Array.from(new Set(elements)).sort((a, b) => {
-      if (a === b) {
-        return 0;
-      }
-
-      const position = a.compareDocumentPosition(b);
-      return position & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
-    });
-  }
-
-  function getRangeRect(range) {
-    const rect = range.getBoundingClientRect();
-    if (rect && rect.width > 0 && rect.height > 0) {
-      return rect;
-    }
-
-    const rects = Array.from(range.getClientRects());
-    return rects.find((item) => item.width > 0 && item.height > 0) || null;
-  }
-
-  function normalizeComparableText(text) {
-    return String(text || "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 5000);
-  }
-
-  function delay(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
-  }
+  activeAdapter = ctx.getActiveAdapter();
+  catDockPosition = ctx.loadCatDockPosition();
+  tuckedCatTop = ctx.loadTuckedCatTop();
+  activeAnchorStorageKey = ctx.getAnchorStorageKey();
+  activeBranchStorageKey = ctx.getBranchStorageKey();
+
+  ctx.installExtensionMessageListeners();
+  ctx.loadSettingsFromStorage();
 })();

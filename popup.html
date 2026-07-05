@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AskAnchor</title>
+    <link rel="stylesheet" href="settings.css">
+  </head>
+  <body class="ask-anchor-settings ask-anchor-settings--popup">
+    <main class="settings-shell">
+      <header class="settings-header">
+        <div>
+          <h1>AskAnchor</h1>
+          <p>Alt+A 打开锚点列表 · Alt+Q 追问选区</p>
+        </div>
+      </header>
+
+      <form id="ask-anchor-settings-form" class="settings-form">
+        <label class="settings-toggle">
+          <span>
+            <strong>显示小猫</strong>
+            <small>保留页面上的悬浮入口。</small>
+          </span>
+          <input type="checkbox" name="showCat">
+        </label>
+
+        <fieldset>
+          <legend>默认位置</legend>
+          <label><input type="radio" name="catDefaultPosition" value="editor"> 输入框旁</label>
+          <label><input type="radio" name="catDefaultPosition" value="right"> 页面右侧</label>
+          <label><input type="radio" name="catDefaultPosition" value="custom"> 自定义</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>时间线</legend>
+          <label><input type="radio" name="timelineMode" value="auto"> 自动识别</label>
+          <label><input type="radio" name="timelineMode" value="on"> 开</label>
+          <label><input type="radio" name="timelineMode" value="off"> 关</label>
+        </fieldset>
+
+        <label class="settings-toggle">
+          <span>
+            <strong>动画与眼部跟随</strong>
+            <small>关闭后减少页面动效。</small>
+          </span>
+          <input type="checkbox" name="eyeTracking">
+        </label>
+      </form>
+
+      <footer class="settings-footer">
+        <span id="ask-anchor-settings-status" role="status"></span>
+        <button id="ask-anchor-open-options" type="button">打开完整设置</button>
+      </footer>
+    </main>
+    <script src="src/platforms.js"></script>
+    <script src="src/core.js"></script>
+    <script src="settings.js"></script>
+  </body>
+</html>

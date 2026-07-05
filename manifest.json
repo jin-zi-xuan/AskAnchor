@@ -3,7 +3,30 @@
   "name": "AskAnchor",
   "version": "0.2.0",
   "description": "Ask follow-up questions from selected AI response text and jump back to saved anchors.",
-  "permissions": ["clipboardWrite"],
+  "permissions": ["clipboardWrite", "storage", "tabs"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "commands": {
+    "askanchor-open-anchors": {
+      "suggested_key": {
+        "default": "Alt+A",
+        "mac": "Alt+A"
+      },
+      "description": "Open the AskAnchor anchor list"
+    },
+    "askanchor-follow-up-selection": {
+      "suggested_key": {
+        "default": "Alt+Q",
+        "mac": "Alt+Q"
+      },
+      "description": "Ask a follow-up question about the current selection"
+    }
+  },
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
@@ -38,7 +61,19 @@
         "https://tongyi.aliyun.com/*",
         "https://yiyan.baidu.com/*"
       ],
-      "js": ["contentScript.js"],
+      "js": [
+        "src/platforms.js",
+        "src/core.js",
+        "src/adapters/platforms.js",
+        "src/content/core.js",
+        "src/content/selection.js",
+        "src/content/anchors.js",
+        "src/content/branches.js",
+        "src/content/timeline.js",
+        "src/content/catDock.js",
+        "src/content/dom.js",
+        "contentScript.js"
+      ],
       "css": ["styles.css"],
       "run_at": "document_idle"
     }

@@ -4,3 +4,5 @@ Thumbs.db
 *.crx
 dist/
 build/
+node_modules/
+.workbuddy/
