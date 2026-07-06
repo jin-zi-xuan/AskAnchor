@@ -13,7 +13,6 @@
       hideExplainButton();
       closeFollowUpMenu();
       closeAnchorList();
-      closeBranchPanel();
       return;
     }
 
@@ -143,42 +142,36 @@
     const sourceRange = selectionSnapshot.range.cloneRange();
     const selector = serializeRange(sourceRange, selectionSnapshot.messageElement);
     const messageLocator = createMessageLocator(selectionSnapshot.messageElement, selector);
-    const marker = createSelectionMarker(sourceRange);
-    const anchor = addAnchor({
+    const anchorDraft = {
       text: selectionSnapshot.text,
       range: sourceRange,
       selector,
       messageLocator,
-      marker,
       element: selectionSnapshot.messageElement,
       scrollY: window.scrollY
-    });
+    };
     const knownUserElements = collectUserMessageElements();
     const knownUserNodes = new Set(knownUserElements);
     const knownUserTexts = new Set(knownUserElements.map((node) => normalizeComparableText(node.innerText || node.textContent || "")));
-    const branch = createBranch(anchor.id, selectionSnapshot.text, templateId);
-    const prompt = branch.prompt;
+    const prompt = buildFollowUpPrompt(selectionSnapshot.text, templateId);
     const filled = await fillCurrentAiInput(prompt);
 
     hideExplainButton();
-    renderAnchorDock();
 
     if (filled) {
-      markBranchSent(branch.id);
       watchForSentFollowUp({
-        anchor,
-        branchId: branch.id,
+        anchorDraft,
         prompt,
         selectedText: selectionSnapshot.text,
         knownUserNodes,
         knownUserTexts
       });
-      showToast(`\u5df2\u751f\u6210\u951a\u70b9\u300c${anchor.name}\u300d\u548c\u8ffd\u95ee\u5206\u652f\uff0c\u5e76\u586b\u5165\u8ffd\u95ee`);
+      showToast("\u5df2\u586b\u5165\u8ffd\u95ee\uff0c\u53d1\u9001\u540e\u518d\u521b\u5efa\u951a\u70b9");
       return;
     }
 
     await copyPromptToClipboard(prompt);
-    showToast(`\u5df2\u751f\u6210\u951a\u70b9\u300c${anchor.name}\u300d\u548c\u8ffd\u95ee\u5206\u652f\uff0c\u672a\u627e\u5230\u8f93\u5165\u6846\uff0c\u5df2\u590d\u5236`);
+    showToast("\u672a\u627e\u5230\u8f93\u5165\u6846\uff0c\u5df2\u590d\u5236\u8ffd\u95ee\uff1b\u672c\u6b21\u4e0d\u4f1a\u81ea\u52a8\u521b\u5efa\u951a\u70b9");
   }
 
   function toggleFollowUpMenu(selectionRect) {

@@ -24,44 +24,155 @@
     return anchor;
   }
 
+  function serializeAnchorsForStorage() {
+    return anchors.map((anchor) => ({
+      id: anchor.id,
+      name: anchor.name,
+      text: anchor.text,
+      selector: anchor.selector,
+      messageLocator: anchor.messageLocator || null,
+      scrollY: anchor.scrollY,
+      createdAt: anchor.createdAt instanceof Date ? anchor.createdAt.toISOString() : anchor.createdAt,
+      status: normalizeAnchorStatus(anchor.status)
+    }));
+  }
+
   function persistAnchorsToSession() {
+    const payload = serializeAnchorsForStorage();
+    const storageKey = getAnchorStorageKey();
+
     try {
-      const payload = anchors.map((anchor) => ({
-        id: anchor.id,
-        name: anchor.name,
-        text: anchor.text,
-        selector: anchor.selector,
-        messageLocator: anchor.messageLocator || null,
-        scrollY: anchor.scrollY,
-        createdAt: anchor.createdAt instanceof Date ? anchor.createdAt.toISOString() : anchor.createdAt,
-        status: normalizeAnchorStatus(anchor.status)
-      }));
-      sessionStorage.setItem(getAnchorStorageKey(), JSON.stringify(payload));
+      sessionStorage.setItem(storageKey, JSON.stringify(payload));
     } catch (error) {
       console.debug("[AskAnchor] Failed to persist anchors:", error);
+    }
+
+    persistAnchorsToLocalStorage(storageKey, payload);
+  }
+
+  function persistAnchorsToLocalStorage(storageKey, payload) {
+    const storageArea = getExtensionApi()?.storage?.local;
+    if (!storageArea?.set) {
+      return;
+    }
+
+    try {
+      const data = { [storageKey]: payload };
+      if (usesPromiseExtensionStorage()) {
+        storageArea.set(data).catch((error) => {
+          console.debug("[AskAnchor] Failed to persist anchors to extension storage:", error);
+        });
+        return;
+      }
+
+      const maybePromise = storageArea.set(data, () => {
+        const error = getExtensionApi()?.runtime?.lastError;
+        if (error) {
+          console.debug("[AskAnchor] Failed to persist anchors to extension storage:", error);
+        }
+      });
+      if (maybePromise?.catch) {
+        maybePromise.catch((error) => {
+          console.debug("[AskAnchor] Failed to persist anchors to extension storage:", error);
+        });
+      }
+    } catch (error) {
+      console.debug("[AskAnchor] Failed to persist anchors to extension storage:", error);
     }
   }
 
   function loadAnchorsFromSession() {
+    const storageKey = getAnchorStorageKey();
+    activeAnchorStorageKey = storageKey;
+
+    loadAnchorsFromLocalStorage(storageKey)
+      .then((loaded) => {
+        if (!loaded || activeAnchorStorageKey !== storageKey) {
+          return;
+        }
+
+        renderAnchorDock();
+      })
+      .catch((error) => {
+        console.debug("[AskAnchor] Failed to load anchors from extension storage:", error);
+      });
+
+    loadAnchorsFromSessionFallback(storageKey, { shouldPersistToLocal: false });
+  }
+
+  function loadAnchorsFromSessionFallback(storageKey, options = {}) {
+    if (activeAnchorStorageKey !== storageKey) {
+      return false;
+    }
+
     try {
-      activeAnchorStorageKey = getAnchorStorageKey();
-      const raw = sessionStorage.getItem(getAnchorStorageKey());
+      const raw = sessionStorage.getItem(storageKey);
       if (!raw) {
         anchors = [];
         activeAnchorId = null;
         renderAnchorDock();
-        return;
+        return false;
       }
 
       const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        anchors = [];
-        activeAnchorId = null;
-        renderAnchorDock();
-        return;
+      const didLoad = applyStoredAnchors(parsed);
+      if (options.shouldPersistToLocal && didLoad) {
+        persistAnchorsToLocalStorage(storageKey, serializeAnchorsForStorage());
       }
 
-      anchors = parsed.slice(0, MAX_ANCHORS).map((item) => ({
+      renderAnchorDock();
+      return didLoad;
+    } catch (error) {
+      console.debug("[AskAnchor] Failed to load anchors:", error);
+      return false;
+    }
+  }
+
+  async function loadAnchorsFromLocalStorage(storageKey) {
+    const storageArea = getExtensionApi()?.storage?.local;
+    if (!storageArea?.get) {
+      return loadAnchorsFromSessionFallback(storageKey, { shouldPersistToLocal: false });
+    }
+
+    const items = await getExtensionStorageItem(storageArea, storageKey);
+    if (activeAnchorStorageKey !== storageKey) {
+      return false;
+    }
+
+    const storedValue = items?.[storageKey];
+    if (Array.isArray(storedValue)) {
+      return applyStoredAnchors(storedValue);
+    }
+
+    return loadAnchorsFromSessionFallback(storageKey, { shouldPersistToLocal: true });
+  }
+
+  function getExtensionStorageItem(storageArea, storageKey) {
+    return new Promise((resolve) => {
+      try {
+        if (usesPromiseExtensionStorage()) {
+          storageArea.get(storageKey).then((items) => resolve(items || {})).catch(() => resolve({}));
+          return;
+        }
+
+        const maybePromise = storageArea.get(storageKey, (items) => resolve(items || {}));
+        if (maybePromise?.then) {
+          maybePromise.then((items) => resolve(items || {})).catch(() => resolve({}));
+        }
+      } catch (error) {
+        resolve({});
+      }
+    });
+  }
+
+  function applyStoredAnchors(storedAnchors) {
+    if (!Array.isArray(storedAnchors) || storedAnchors.length === 0) {
+      anchors = [];
+      activeAnchorId = null;
+      return false;
+    }
+
+    anchors = storedAnchors.slice(0, MAX_ANCHORS).map((item) => ({
         id: item.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         name: item.name || createAnchorName(item.text),
         text: item.text || "",
@@ -74,20 +185,15 @@
         marker: null,
         element: document.body
       }));
-      renderAnchorDock();
-    } catch (error) {
-      console.debug("[AskAnchor] Failed to load anchors:", error);
+    if (activeAnchorId && !anchors.some((anchor) => anchor.id === activeAnchorId)) {
+      activeAnchorId = null;
     }
+    return true;
   }
 
   function getAnchorStorageKey() {
     return `${STORAGE_KEY_PREFIX}${location.origin}${location.pathname}${location.search}`;
   }
-
-  function getBranchStorageKey() {
-    return `${BRANCH_STORAGE_KEY_PREFIX}${location.origin}${location.pathname}${location.search}`;
-  }
-
 
   function handleConversationRouteChange() {
     const nextKey = getAnchorStorageKey();
@@ -97,14 +203,20 @@
     }
 
     activeAnchorStorageKey = nextKey;
-    activeBranchStorageKey = getBranchStorageKey();
     closeAnchorList();
-    closeBranchPanel();
     resetConversationTimeline();
     observeConversationRoot();
     loadAnchorsFromSession();
-    loadBranchesFromSession();
     scheduleConversationTimelineRender();
+  }
+
+  function ensureCurrentConversationAnchorsLoaded() {
+    const nextKey = getAnchorStorageKey();
+    if (nextKey === activeAnchorStorageKey) {
+      return;
+    }
+
+    handleConversationRouteChange();
   }
 
   function createAnchorName(text) {
@@ -177,36 +289,9 @@
     }
 
     list.innerHTML = "";
-    if (anchors.length > 0) {
-      list.appendChild(createBranchToolbar());
-    }
     anchors.forEach((anchor, index) => {
       list.appendChild(createAnchorItem(anchor, index));
     });
-  }
-
-  function createBranchToolbar() {
-    const toolbar = document.createElement("div");
-    toolbar.className = "ask-anchor-branch-toolbar";
-
-    const anchor = getBranchPanelAnchor() || anchors[0];
-    const branchCount = anchor ? getBranchesByAnchor(anchor.id).length : 0;
-    toolbar.innerHTML = `
-      <button class="ask-anchor-branch-open" type="button">
-        <span>\u8ffd\u95ee\u5206\u652f</span>
-        <span class="ask-anchor-branch-open__count"></span>
-      </button>
-    `;
-
-    const button = toolbar.querySelector(".ask-anchor-branch-open");
-    button.querySelector(".ask-anchor-branch-open__count").textContent = String(branchCount);
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      openBranchPanel(anchor?.id);
-    });
-
-    return toolbar;
   }
 
   function createAnchorItem(anchor, index) {
@@ -231,7 +316,6 @@
       </button>
       <div class="ask-anchor-anchor-actions" aria-label="\u951a\u70b9\u7ba1\u7406\u64cd\u4f5c">
         <button class="ask-anchor-anchor-status" type="button"></button>
-        <button class="ask-anchor-anchor-action ask-anchor-anchor-branches" type="button" aria-label="\u6253\u5f00\u8ffd\u95ee\u5206\u652f" title="\u8ffd\u95ee\u5206\u652f">\u5206</button>
         <button class="ask-anchor-anchor-action ask-anchor-anchor-rename" type="button" aria-label="\u91cd\u547d\u540d\u951a\u70b9" title="\u91cd\u547d\u540d">\u270e</button>
         <button class="ask-anchor-anchor-action ask-anchor-anchor-delete" type="button" aria-label="\u5220\u9664\u951a\u70b9" title="\u5220\u9664">\u00d7</button>
       </div>
@@ -240,7 +324,17 @@
     item.querySelector(".ask-anchor-anchor-name").textContent = anchor.name;
     const mainButton = item.querySelector(".ask-anchor-anchor-main");
     mainButton.setAttribute("aria-label", `\u8fd4\u56de\u951a\u70b9 ${index + 1}\uff1a${anchor.name}`);
-    mainButton.addEventListener("click", () => {
+    mainButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeAnchorList();
+      returnToAnchor(anchor.id);
+    });
+    item.addEventListener("click", (event) => {
+      if (event.target.closest(".ask-anchor-anchor-actions, .ask-anchor-anchor-editor, .ask-anchor-anchor-name-input")) {
+        return;
+      }
+
       closeAnchorList();
       returnToAnchor(anchor.id);
     });
@@ -253,13 +347,6 @@
       event.preventDefault();
       event.stopPropagation();
       toggleAnchorStatus(anchor.id);
-    });
-
-    const branchesButton = item.querySelector(".ask-anchor-anchor-branches");
-    branchesButton.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      openBranchPanel(anchor.id);
     });
 
     const renameButton = item.querySelector(".ask-anchor-anchor-rename");
@@ -390,8 +477,23 @@
     event.stopPropagation();
   }
 
+  function handleAnchorListOutsidePointerDown(event) {
+    const target = event.target;
+    if (!target || !target.closest) {
+      return;
+    }
+
+    if (target.closest(`#${DOCK_ID}, #${PANEL_ID}`)) {
+      return;
+    }
+
+    closeAnchorList();
+  }
+
 
   function toggleAnchorList() {
+    ensureCurrentConversationAnchorsLoaded();
+
     if (!askAnchorSettings.showCat) {
       toggleStandaloneAnchorPanel();
       return;
@@ -436,6 +538,8 @@
   }
 
   function toggleStandaloneAnchorPanel() {
+    ensureCurrentConversationAnchorsLoaded();
+
     const panel = getOrCreateStandaloneAnchorPanel();
     const willOpen = panel.hidden;
     if (anchors.length === 0) {
@@ -513,7 +617,7 @@
     }
 
     const marker = anchor.marker && document.contains(anchor.marker) ? anchor.marker : null;
-    const target = anchor.element && document.contains(anchor.element) ? anchor.element : null;
+    const target = getAnchorFallbackTarget(anchor);
 
     if (marker) {
       marker.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
@@ -531,10 +635,25 @@
     if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "center" });
       brieflyHighlight(target);
+      showToast("\u672a\u80fd\u7cbe\u786e\u5339\u914d\u539f\u6587\uff0c\u5df2\u5b9a\u4f4d\u5230\u5bf9\u5e94\u56de\u7b54");
       return;
     }
 
     window.scrollTo({ top: anchor.scrollY, behavior: "smooth" });
+    showToast("\u672a\u80fd\u7cbe\u786e\u5339\u914d\u539f\u6587\uff0c\u5df2\u56de\u5230\u4fdd\u5b58\u65f6\u7684\u6eda\u52a8\u4f4d\u7f6e");
+  }
+
+  function getAnchorFallbackTarget(anchor) {
+    if (
+      anchor.element
+      && document.contains(anchor.element)
+      && anchor.element !== document.body
+      && anchor.element !== document.documentElement
+    ) {
+      return anchor.element;
+    }
+
+    return resolveMessageElement(anchor.messageLocator, anchor.selector);
   }
 
 
@@ -589,11 +708,14 @@
       return null;
     }
 
-    const messageRoot = resolveMessageElement(anchor.messageLocator, anchor.selector);
-    if (messageRoot) {
-      anchor.element = messageRoot;
+    const messageRoots = typeof resolveMessageElements === "function"
+      ? resolveMessageElements(anchor.messageLocator, anchor.selector)
+      : [resolveMessageElement(anchor.messageLocator, anchor.selector)].filter(Boolean);
+
+    for (const messageRoot of uniqueElements(messageRoots)) {
       const scopedRange = findRangeFromSelector(anchor.selector, messageRoot);
       if (scopedRange) {
+        anchor.element = messageRoot;
         return scopedRange;
       }
     }
@@ -633,10 +755,120 @@
       .sort((a, b) => b.score - a.score || Math.abs(a.start - normalizedStartRange) - Math.abs(b.start - normalizedStartRange))[0]?.start;
 
     if (typeof bestStart !== "number") {
-      return null;
+      return findRangeFromNormalizedSelector(selector, snapshot);
     }
 
     return createRangeFromOffsets(snapshot.nodes, bestStart, bestStart + selector.exact.length);
+  }
+
+  function findRangeFromNormalizedSelector(selector, snapshot) {
+    const normalizedText = normalizeTextWithOffsetMap(snapshot.text);
+    const normalizedExact = normalizeTextWithOffsetMap(selector.exact || "");
+    if (!normalizedText.text || !normalizedExact.text) {
+      return null;
+    }
+
+    const normalizedStart = getNormalizedOffsetForOriginalOffset(normalizedText.map, selector.start || 0);
+    const candidates = [];
+    let index = normalizedText.text.indexOf(normalizedExact.text, Math.max(0, normalizedStart - 500));
+    while (index !== -1) {
+      candidates.push(index);
+      index = normalizedText.text.indexOf(normalizedExact.text, index + 1);
+    }
+
+    if (candidates.length === 0) {
+      index = normalizedText.text.indexOf(normalizedExact.text);
+      while (index !== -1) {
+        candidates.push(index);
+        index = normalizedText.text.indexOf(normalizedExact.text, index + 1);
+      }
+    }
+
+    const bestNormalizedStart = candidates
+      .map((start) => ({
+        start,
+        score: scoreNormalizedSelectorMatch(normalizedText.text, selector, start, normalizedStart)
+      }))
+      .sort((a, b) => b.score - a.score || Math.abs(a.start - normalizedStart) - Math.abs(b.start - normalizedStart))[0]?.start;
+
+    if (typeof bestNormalizedStart !== "number") {
+      return null;
+    }
+
+    const normalizedEnd = bestNormalizedStart + normalizedExact.text.length;
+    const originalStart = normalizedText.map[bestNormalizedStart];
+    const originalEnd = normalizedEnd < normalizedText.map.length
+      ? normalizedText.map[normalizedEnd]
+      : snapshot.text.length;
+
+    if (!Number.isFinite(originalStart) || !Number.isFinite(originalEnd) || originalEnd <= originalStart) {
+      return null;
+    }
+
+    return createRangeFromOffsets(snapshot.nodes, originalStart, originalEnd);
+  }
+
+  function normalizeTextWithOffsetMap(text) {
+    const source = String(text || "");
+    const chars = [];
+    const map = [];
+    let previousWasSpace = true;
+
+    for (let index = 0; index < source.length; index += 1) {
+      const char = source[index];
+      if (/\s/.test(char)) {
+        if (!previousWasSpace) {
+          chars.push(" ");
+          map.push(index);
+          previousWasSpace = true;
+        }
+        continue;
+      }
+
+      chars.push(char);
+      map.push(index);
+      previousWasSpace = false;
+    }
+
+    if (chars[chars.length - 1] === " ") {
+      chars.pop();
+      map.pop();
+    }
+
+    map.push(source.length);
+    return {
+      text: chars.join(""),
+      map
+    };
+  }
+
+  function getNormalizedOffsetForOriginalOffset(map, originalOffset) {
+    const offset = Math.max(0, originalOffset || 0);
+    const index = map.findIndex((originalIndex) => originalIndex >= offset);
+    return index === -1 ? Math.max(0, map.length - 1) : index;
+  }
+
+  function scoreNormalizedSelectorMatch(normalizedText, selector, normalizedStart, expectedNormalizedStart) {
+    let score = 0;
+    const normalizedExact = normalizeTextWithOffsetMap(selector.exact || "").text;
+    const normalizedPrefix = normalizeTextWithOffsetMap(selector.prefix || "").text;
+    const normalizedSuffix = normalizeTextWithOffsetMap(selector.suffix || "").text;
+    const normalizedEnd = normalizedStart + normalizedExact.length;
+
+    if (normalizedPrefix) {
+      const prefixStart = Math.max(0, normalizedStart - normalizedPrefix.length);
+      if (normalizedText.slice(prefixStart, normalizedStart).endsWith(normalizedPrefix)) {
+        score += 3;
+      }
+    }
+
+    if (normalizedSuffix && normalizedText.slice(normalizedEnd, normalizedEnd + normalizedSuffix.length).startsWith(normalizedSuffix)) {
+      score += 3;
+    }
+
+    score -= Math.min(2, Math.abs(normalizedStart - (expectedNormalizedStart || 0)) / 1000);
+    score += 0.5;
+    return score;
   }
 
   function scoreSelectorMatch(text, selector, start) {
@@ -686,7 +918,7 @@
   function isVisibleTextNode(node) {
     let element = node.parentElement;
     while (element && element !== document.documentElement) {
-      if (element.closest?.(`#${DOCK_ID}, #${PANEL_ID}, #${BRANCH_PANEL_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
+      if (element.closest?.(`#${DOCK_ID}, #${PANEL_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
         return false;
       }
       if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "IFRAME"].includes(element.tagName)) {
@@ -823,12 +1055,65 @@
     }
 
     try {
+      highlightRestoredRange(range);
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
     } catch (error) {
       console.debug("[AskAnchor] Failed to restore selection:", error);
     }
+  }
+
+  function highlightRestoredRange(range) {
+    clearRestoredRangeHighlight();
+
+    try {
+      if (globalThis.CSS?.highlights && typeof globalThis.Highlight === "function") {
+        const highlight = new Highlight(range.cloneRange());
+        CSS.highlights.set("ask-anchor-restored-selection", highlight);
+      }
+
+      renderRestoredRangeOverlay(range);
+      highlightRestoredRange.refreshTimer = window.setTimeout(() => {
+        document.querySelectorAll(".ask-anchor-restored-selection-overlay").forEach((node) => node.remove());
+        if (isRangeUsable(range)) {
+          renderRestoredRangeOverlay(range);
+        }
+      }, 520);
+      highlightRestoredRange.timer = window.setTimeout(clearRestoredRangeHighlight, 2600);
+    } catch (error) {
+      console.debug("[AskAnchor] Failed to highlight restored range:", error);
+    }
+  }
+
+  function clearRestoredRangeHighlight() {
+    window.clearTimeout(highlightRestoredRange.timer);
+    window.clearTimeout(highlightRestoredRange.refreshTimer);
+    highlightRestoredRange.timer = null;
+    highlightRestoredRange.refreshTimer = null;
+
+    try {
+      globalThis.CSS?.highlights?.delete("ask-anchor-restored-selection");
+      document.querySelectorAll(".ask-anchor-restored-selection-overlay").forEach((node) => node.remove());
+    } catch (error) {
+      console.debug("[AskAnchor] Failed to clear restored range highlight:", error);
+    }
+  }
+
+  function renderRestoredRangeOverlay(range) {
+    const rects = Array.from(range.getClientRects())
+      .filter((rect) => rect.width > 0 && rect.height > 0)
+      .slice(0, 12);
+
+    rects.forEach((rect) => {
+      const overlay = document.createElement("span");
+      overlay.className = "ask-anchor-restored-selection-overlay";
+      overlay.style.left = `${rect.left}px`;
+      overlay.style.top = `${rect.top}px`;
+      overlay.style.width = `${rect.width}px`;
+      overlay.style.height = `${rect.height}px`;
+      document.documentElement.appendChild(overlay);
+    });
   }
 
   function brieflyHighlight(element) {
@@ -859,21 +1144,21 @@
         persistAnchorsToSession,
         loadAnchorsFromSession,
         getAnchorStorageKey,
-        getBranchStorageKey,
         handleConversationRouteChange,
+        ensureCurrentConversationAnchorsLoaded,
         createAnchorName,
         normalizeAnchorName,
         normalizeAnchorStatus,
         getAnchorStatusLabel,
         renderAnchorDock,
         renderAnchorItems,
-        createBranchToolbar,
         createAnchorItem,
         toggleAnchorStatus,
         deleteAnchor,
         startRenameAnchor,
         renameAnchor,
         stopAnchorControlEvent,
+        handleAnchorListOutsidePointerDown,
         toggleAnchorList,
         closeAnchorList,
         toggleStandaloneAnchorPanel,

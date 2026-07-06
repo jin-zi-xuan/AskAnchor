@@ -3,6 +3,19 @@
 
   global.AskAnchorModules.catDock = function createAskAnchorCatDockModule(ctx) {
     with (ctx) {
+  let promptEditorResizeObserver = null;
+  let promptEditorTrackingFrame = null;
+  let promptEditorTrackingBurstFrame = null;
+  let promptEditorTrackingBurstUntil = 0;
+  let trackedPromptEditor = null;
+  let trackedPromptTargets = [];
+  const CAT_DOCK_WIDTH = 76;
+  const CAT_DOCK_HEIGHT = 44;
+  const CAT_IMAGE_BOTTOM_OFFSET = 46;
+  const CAT_EDITOR_RIGHT_INSET = 96;
+  const CAT_RIGHT_TOP_OFFSET = 96;
+  const CAT_POSITION_ANCHOR_VERSION = "prompt-shell-v2";
+
   function ensureCatFaceLayers(dock) {
     const button = dock.querySelector(".ask-anchor-dock-button");
     const catImage = dock.querySelector(".ask-anchor-cat-image");
@@ -192,11 +205,23 @@
     }
 
     const editor = findPromptEditor();
-    const editorRect = editor?.getBoundingClientRect?.();
+    const editorRect = getPromptEditorAnchorRect(editor);
+
+    if (askAnchorSettings.catDefaultPosition === "right") {
+      catDockPosition = createRightEdgePositionFromPointer(event, dock);
+      applyRightCatDockPosition(dock, catDockPosition);
+      return;
+    }
 
     if (editorRect && editorRect.width > 0 && editorRect.height > 0) {
-      catDockPosition = createCatPositionFromPointer(event, editorRect);
+      catDockPosition = askAnchorSettings.catDefaultPosition === "custom"
+        ? createCatWorkspacePositionFromPointer(event, getCatCustomMoveBounds(editorRect))
+        : createCatPositionFromPointer(event, editorRect);
       applyCatDockPosition(dock, getCatDockViewportPosition(catDockPosition, editorRect));
+      return;
+    }
+
+    if (askAnchorSettings.catDefaultPosition !== "custom") {
       return;
     }
 
@@ -225,7 +250,9 @@
       }, 0);
     } else if (catDragState.moved && catDockPosition) {
       saveCatDockPosition(catDockPosition);
-      updateStoredSettings({ catDefaultPosition: "custom" });
+      if (askAnchorSettings.catDefaultPosition === "custom") {
+        updateStoredSettings({ catDefaultPosition: "custom" });
+      }
       window.setTimeout(() => {
         catDragState = null;
       }, 0);
@@ -251,6 +278,7 @@
       return;
     }
 
+    observePromptEditorForCatDock();
     dock.classList.toggle("is-tucked", catDockTucked);
     updateCatImage(dock);
     updateCatHint(dock);
@@ -260,16 +288,18 @@
     }
 
     if (askAnchorSettings.catDefaultPosition === "right") {
-      applyRightCatDockPosition(dock);
+      applyRightCatDockPosition(dock, catDockPosition);
       return;
     }
 
     if (askAnchorSettings.catDefaultPosition === "custom" && catDockPosition) {
       const editor = findPromptEditor();
-      const editorRect = editor?.getBoundingClientRect?.();
-      const safePosition = getCatDockViewportPosition(catDockPosition, editorRect);
-      applyCatDockPosition(dock, safePosition);
-      return;
+      const editorRect = getPromptEditorAnchorRect(editor);
+      if (catDockPosition.mode === "editor-edge" || catDockPosition.mode === "editor-workspace" || catDockPosition.mode === "editor-box" || !editorRect) {
+        const safePosition = getCatDockViewportPosition(catDockPosition, editorRect);
+        applyCatDockPosition(dock, safePosition);
+        return;
+      }
     }
 
     const editor = findPromptEditor();
@@ -277,30 +307,344 @@
       dock.style.removeProperty("--ask-anchor-cat-left");
       dock.style.removeProperty("--ask-anchor-cat-right");
       dock.style.removeProperty("--ask-anchor-cat-top");
+      dock.style.removeProperty("--ask-anchor-cat-shift");
       dock.style.removeProperty("bottom");
       return;
     }
 
-    const rect = editor.getBoundingClientRect();
+    const rect = getPromptEditorAnchorRect(editor);
     if (!rect || rect.width <= 0 || rect.height <= 0) {
       return;
     }
 
-    const catWidth = 76;
-    const left = Math.min(window.innerWidth - catWidth - 8, Math.max(8, rect.right - catWidth - 96));
-    const top = Math.min(window.innerHeight - 50, Math.max(8, rect.top - 40));
+    if (catDockPosition?.mode === "editor-edge") {
+      applyCatDockPosition(dock, getCatDockViewportPosition(catDockPosition, rect));
+      return;
+    }
+
+    const left = Math.min(window.innerWidth - CAT_DOCK_WIDTH - 8, Math.max(8, rect.right - CAT_DOCK_WIDTH - CAT_EDITOR_RIGHT_INSET));
+    const top = Math.min(window.innerHeight - CAT_DOCK_HEIGHT - 4, Math.max(4, rect.top - getCatDockAnchorBottomOffset(dock)));
     dock.style.setProperty("--ask-anchor-cat-left", `${left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
+    dock.style.setProperty("--ask-anchor-cat-shift", "0px");
     dock.style.removeProperty("bottom");
   }
 
-  function applyRightCatDockPosition(dock) {
+  function installPromptEditorTracking() {
+    if ("ResizeObserver" in window && !promptEditorResizeObserver) {
+      promptEditorResizeObserver = new ResizeObserver(schedulePromptEditorTrackingUpdate);
+    }
+
+    document.addEventListener("input", handlePromptEditorTrackingEvent, true);
+    document.addEventListener("keyup", handlePromptEditorTrackingEvent, true);
+    document.addEventListener("compositionend", handlePromptEditorTrackingEvent, true);
+    window.addEventListener("focus", handlePromptEditorTrackingEvent);
+    observePromptEditorForCatDock();
+    schedulePromptEditorTrackingUpdate();
+  }
+
+  function uninstallPromptEditorTracking() {
+    document.removeEventListener("input", handlePromptEditorTrackingEvent, true);
+    document.removeEventListener("keyup", handlePromptEditorTrackingEvent, true);
+    document.removeEventListener("compositionend", handlePromptEditorTrackingEvent, true);
+    window.removeEventListener("focus", handlePromptEditorTrackingEvent);
+
+    if (promptEditorResizeObserver) {
+      promptEditorResizeObserver.disconnect();
+      promptEditorResizeObserver = null;
+    }
+
+    if (promptEditorTrackingFrame) {
+      window.cancelAnimationFrame(promptEditorTrackingFrame);
+      promptEditorTrackingFrame = null;
+    }
+
+    if (promptEditorTrackingBurstFrame) {
+      window.cancelAnimationFrame(promptEditorTrackingBurstFrame);
+      promptEditorTrackingBurstFrame = null;
+    }
+    promptEditorTrackingBurstUntil = 0;
+
+    trackedPromptEditor = null;
+    trackedPromptTargets = [];
+  }
+
+  function handlePromptEditorTrackingEvent() {
+    updatePromptEditorTracking();
+    startPromptEditorTrackingBurst();
+  }
+
+  function schedulePromptEditorTrackingUpdate() {
+    if (promptEditorTrackingFrame) {
+      return;
+    }
+
+    promptEditorTrackingFrame = window.requestAnimationFrame(() => {
+      promptEditorTrackingFrame = null;
+      updatePromptEditorTracking();
+    });
+  }
+
+  function startPromptEditorTrackingBurst() {
+    promptEditorTrackingBurstUntil = Date.now() + 260;
+    if (promptEditorTrackingBurstFrame) {
+      return;
+    }
+
+    promptEditorTrackingBurstFrame = window.requestAnimationFrame(runPromptEditorTrackingBurst);
+  }
+
+  function runPromptEditorTrackingBurst() {
+    promptEditorTrackingBurstFrame = null;
+    updatePromptEditorTracking();
+    if (Date.now() >= promptEditorTrackingBurstUntil) {
+      promptEditorTrackingBurstUntil = 0;
+      return;
+    }
+
+    promptEditorTrackingBurstFrame = window.requestAnimationFrame(runPromptEditorTrackingBurst);
+  }
+
+  function updatePromptEditorTracking() {
+    observePromptEditorForCatDock();
+    updateCatDockPosition();
+  }
+
+  function observePromptEditorForCatDock() {
+    const editor = findPromptEditor();
+    if (editor === trackedPromptEditor && trackedPromptTargets.every((target) => document.contains(target))) {
+      return;
+    }
+
+    trackedPromptEditor = editor || null;
+    trackedPromptTargets = getPromptEditorTrackingTargets(editor);
+    if (!promptEditorResizeObserver) {
+      return;
+    }
+
+    promptEditorResizeObserver.disconnect();
+    trackedPromptTargets.forEach((target) => {
+      try {
+        promptEditorResizeObserver.observe(target);
+      } catch (error) {
+        console.debug("[AskAnchor] Failed to observe prompt editor:", error);
+      }
+    });
+  }
+
+  function getPromptEditorTrackingTargets(editor) {
+    if (!editor || !document.contains(editor)) {
+      return [];
+    }
+
+    const targets = [editor];
+    const container = editor.closest([
+      "form",
+      "[role='form']",
+      "[data-testid*='composer' i]",
+      "[data-testid*='chat-input' i]",
+      "[class*='composer' i]",
+      "[class*='chat-input' i]",
+      "[class*='input' i]"
+    ].join(","));
+    if (container && container !== editor) {
+      targets.push(container);
+    }
+
+    let parent = editor.parentElement;
+    let depth = 0;
+    while (parent && parent !== document.body && depth < 8) {
+      if (!targets.includes(parent)) {
+        targets.push(parent);
+      }
+      parent = parent.parentElement;
+      depth += 1;
+    }
+
+    return targets;
+  }
+
+  function getPromptEditorAnchorRect(editor) {
+    if (!editor || !document.contains(editor)) {
+      return null;
+    }
+
+    const candidates = getPromptEditorTrackingTargets(editor)
+      .map((target) => ({
+        target,
+        rect: target.getBoundingClientRect?.()
+      }))
+      .filter(({ rect }) => rect && rect.width > 0 && rect.height > 0)
+      .filter(({ target, rect }) => isPromptDockAnchorCandidate(target, editor, rect));
+
+    const shellCandidate = candidates
+      .filter((candidate) => isPromptInputShellCandidate(candidate, editor))
+      .sort((left, right) => comparePromptInputShellCandidates(left, right, editor))[0];
+
+    return shellCandidate?.rect
+      || candidates.sort((left, right) => scorePromptDockAnchorCandidate(right, editor) - scorePromptDockAnchorCandidate(left, editor))[0]?.rect
+      || editor.getBoundingClientRect();
+  }
+
+  function isPromptDockAnchorCandidate(target, editor, rect) {
+    if (target === document.body || target === document.documentElement) {
+      return false;
+    }
+
+    if (!target.contains(editor)) {
+      return false;
+    }
+
+    if (rect.width < 160 || rect.height < 38 || rect.width > window.innerWidth - 8 || rect.height > window.innerHeight * 0.65) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function isPromptInputShellCandidate(candidate, editor) {
+    const { target, rect } = candidate;
+    const editorRect = editor.getBoundingClientRect();
+    const style = window.getComputedStyle(target);
+    const topGap = editorRect.top - rect.top;
+    const horizontalInset = editorRect.left - rect.left;
+    const radius = getMaxBorderRadius(style);
+
+    return (
+      topGap >= 0
+      && topGap <= 64
+      && horizontalInset >= 0
+      && horizontalInset <= 160
+      && rect.bottom >= editorRect.bottom
+      && rect.width >= editorRect.width
+      && rect.height <= Math.max(180, editorRect.height + 96)
+      && (radius >= 16 || hasVisibleInputChrome(style))
+    );
+  }
+
+  function comparePromptInputShellCandidates(left, right, editor) {
+    const leftScore = scorePromptInputShellCandidate(left, editor);
+    const rightScore = scorePromptInputShellCandidate(right, editor);
+    return rightScore - leftScore;
+  }
+
+  function scorePromptInputShellCandidate(candidate, editor) {
+    const { target, rect } = candidate;
+    const editorRect = editor.getBoundingClientRect();
+    const style = window.getComputedStyle(target);
+    const topGap = editorRect.top - rect.top;
+    const horizontalInset = editorRect.left - rect.left;
+    const radius = getMaxBorderRadius(style);
+    let score = 0;
+
+    if (radius >= 20) {
+      score += 120;
+    } else if (radius >= 12) {
+      score += 48;
+    }
+    if (hasVisibleInputChrome(style)) {
+      score += 80;
+    }
+    if (target.matches?.("form, [role='form'], [data-testid*='composer' i], [data-testid*='chat-input' i], [class*='composer' i], [class*='chat-input' i]")) {
+      score += 24;
+    }
+    if (rect.width > editorRect.width) {
+      score += Math.min(36, (rect.width - editorRect.width) / 12);
+    }
+    if (horizontalInset >= 12 && horizontalInset <= 120) {
+      score += 24;
+    }
+    if (topGap >= 10 && topGap <= 56) {
+      score += 28;
+    }
+
+    return score - rect.height * 0.45 - Math.abs(topGap - 30) * 1.2;
+  }
+
+  function scorePromptDockAnchorCandidate(candidate, editor) {
+    const { target, rect } = candidate;
+    const editorRect = editor.getBoundingClientRect();
+    const style = window.getComputedStyle(target);
+    const topGap = editorRect.top - rect.top;
+    const horizontalInset = editorRect.left - rect.left;
+    const radius = getMaxBorderRadius(style);
+    let score = 0;
+
+    if (target.matches?.("form, [role='form'], [data-testid*='composer' i], [data-testid*='chat-input' i], [class*='composer' i], [class*='chat-input' i]")) {
+      score += 36;
+    }
+    if (hasVisibleInputChrome(style)) {
+      score += 70;
+    }
+    if (radius >= 16) {
+      score += 80;
+    } else if (radius > 0) {
+      score += 24;
+    }
+    if (rect.top <= editorRect.top && rect.bottom >= editorRect.bottom) {
+      score += 16;
+    }
+    if (rect.width > editorRect.width) {
+      score += Math.min(20, (rect.width - editorRect.width) / 20);
+    }
+    if (topGap >= 12 && topGap <= 80) {
+      score += 30;
+    }
+    if (horizontalInset >= 16 && horizontalInset <= 120) {
+      score += 18;
+    }
+
+    return score - Math.max(0, topGap - 96) * 0.7;
+  }
+
+  function getMaxBorderRadius(style) {
+    return Math.max(
+      parseCssPixelValue(style.borderTopLeftRadius),
+      parseCssPixelValue(style.borderTopRightRadius),
+      parseCssPixelValue(style.borderBottomLeftRadius),
+      parseCssPixelValue(style.borderBottomRightRadius),
+      parseCssPixelValue(style.borderRadius)
+    );
+  }
+
+  function hasVisibleInputChrome(style) {
+    return parseCssPixelValue(style.borderTopWidth) > 0
+      || parseCssPixelValue(style.borderBottomWidth) > 0
+      || style.boxShadow && style.boxShadow !== "none"
+      || hasVisibleBackground(style.backgroundColor);
+  }
+
+  function parseCssPixelValue(value) {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function hasVisibleBackground(value) {
+    if (!value || value === "transparent" || value === "rgba(0, 0, 0, 0)") {
+      return false;
+    }
+
+    const rgba = value.match(/^rgba?\(([^)]+)\)$/i);
+    if (!rgba) {
+      return true;
+    }
+
+    const parts = rgba[1].split(",").map((part) => part.trim());
+    return parts.length < 4 || Number.parseFloat(parts[3]) > 0.05;
+  }
+
+  function applyRightCatDockPosition(dock, position = catDockPosition) {
     const height = dock.offsetHeight || 44;
-    const top = Math.round((window.innerHeight - height) / 2);
+    const top = clamp(
+      position?.mode === "right-edge" ? position.top : CAT_RIGHT_TOP_OFFSET,
+      8,
+      window.innerHeight - height - 8
+    );
     dock.style.removeProperty("--ask-anchor-cat-left");
     dock.style.setProperty("--ask-anchor-cat-right", "0px");
-    dock.style.setProperty("--ask-anchor-cat-top", `${clamp(top, 8, window.innerHeight - height - 8)}px`);
+    dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
+    dock.style.setProperty("--ask-anchor-cat-shift", "0px");
     dock.style.removeProperty("bottom");
     if (catEyePointer) {
       scheduleCatEyeUpdate();
@@ -311,6 +655,11 @@
     const dock = document.getElementById(DOCK_ID);
     const rect = dock?.getBoundingClientRect?.();
     if (rect && rect.width > 0 && rect.height > 0) {
+      const editorRect = getPromptEditorAnchorRect(findPromptEditor());
+      if (editorRect && editorRect.width > 0 && editorRect.height > 0) {
+        return createCatPositionFromDockRect(rect, editorRect);
+      }
+
       return {
         mode: "free",
         left: clamp(rect.left, 4, window.innerWidth - rect.width - 4),
@@ -325,32 +674,125 @@
     };
   }
 
+  function createRightEdgePositionFromPointer(event, dock) {
+    const height = dock?.offsetHeight || CAT_DOCK_HEIGHT;
+    return {
+      mode: "right-edge",
+      anchorVersion: CAT_POSITION_ANCHOR_VERSION,
+      top: clamp(event.clientY - catDragState.offsetY, 8, window.innerHeight - height - 8)
+    };
+  }
+
   function createCatPositionFromPointer(event, editorRect) {
-    const catWidth = 76;
-    const x = clamp(event.clientX - catDragState.offsetX + catWidth / 2, editorRect.left + 28, editorRect.right - 28);
+    const x = clamp(event.clientX - catDragState.offsetX + CAT_DOCK_WIDTH / 2, editorRect.left + 28, editorRect.right - 28);
     const ratio = editorRect.width > 0 ? (x - editorRect.left) / editorRect.width : 0.82;
-    const rawOffsetY = event.clientY - catDragState.offsetY - (editorRect.top - 40);
-    const offsetY = clamp(rawOffsetY, -6, 6);
 
     return {
       mode: "editor-edge",
+      anchorVersion: CAT_POSITION_ANCHOR_VERSION,
       ratio: clamp(ratio, 0.08, 0.92),
-      offsetY
+      offsetY: 0
+    };
+  }
+
+  function createCatBoxPositionFromPointer(event, editorRect) {
+    const widthRange = Math.max(1, editorRect.width - CAT_DOCK_WIDTH);
+    const heightRange = Math.max(1, editorRect.height - CAT_DOCK_HEIGHT);
+    const left = clamp(event.clientX - catDragState.offsetX, editorRect.left, editorRect.left + widthRange);
+    const top = clamp(event.clientY - catDragState.offsetY, editorRect.top, editorRect.top + heightRange);
+
+    return {
+      mode: "editor-box",
+      anchorVersion: CAT_POSITION_ANCHOR_VERSION,
+      xRatio: clamp((left - editorRect.left) / widthRange, 0, 1),
+      yRatio: clamp((top - editorRect.top) / heightRange, 0, 1)
+    };
+  }
+
+  function createCatWorkspacePositionFromPointer(event, bounds) {
+    const widthRange = Math.max(1, bounds.right - bounds.left - CAT_DOCK_WIDTH);
+    const heightRange = Math.max(1, bounds.bottom - bounds.top - CAT_DOCK_HEIGHT);
+    const left = clamp(event.clientX - catDragState.offsetX, bounds.left, bounds.left + widthRange);
+    const top = clamp(event.clientY - catDragState.offsetY, bounds.top, bounds.top + heightRange);
+
+    return {
+      mode: "editor-workspace",
+      anchorVersion: CAT_POSITION_ANCHOR_VERSION,
+      xRatio: clamp((left - bounds.left) / widthRange, 0, 1),
+      yRatio: clamp((top - bounds.top) / heightRange, 0, 1)
     };
   }
 
   function getCatDockViewportPosition(position, editorRect) {
     if (position?.mode === "editor-edge" && editorRect && editorRect.width > 0 && editorRect.height > 0) {
-      const catWidth = 76;
       const ratio = clamp(position.ratio ?? 0.82, 0.08, 0.92);
-      const left = clamp(editorRect.left + editorRect.width * ratio - catWidth / 2, 4, window.innerWidth - catWidth - 4);
-      const top = clamp(editorRect.top - 40 + (position.offsetY || 0), 4, window.innerHeight - 44 - 4);
+      const left = clamp(editorRect.left + editorRect.width * ratio - CAT_DOCK_WIDTH / 2, 4, window.innerWidth - CAT_DOCK_WIDTH - 4);
+      const top = clamp(editorRect.top - getCatDockAnchorBottomOffset() + (position.offsetY || 0), 4, window.innerHeight - CAT_DOCK_HEIGHT - 4);
       return { left, top };
     }
 
+    if (position?.mode === "editor-workspace" && editorRect && editorRect.width > 0 && editorRect.height > 0) {
+      const bounds = getCatCustomMoveBounds(editorRect);
+      const widthRange = Math.max(1, bounds.right - bounds.left - CAT_DOCK_WIDTH);
+      const heightRange = Math.max(1, bounds.bottom - bounds.top - CAT_DOCK_HEIGHT);
+      const left = clamp(bounds.left + widthRange * clamp(position.xRatio ?? 0.82, 0, 1), 4, window.innerWidth - CAT_DOCK_WIDTH - 4);
+      const top = clamp(bounds.top + heightRange * clamp(position.yRatio ?? 0, 0, 1), 4, window.innerHeight - CAT_DOCK_HEIGHT - 4);
+      return { left, top };
+    }
+
+    if (position?.mode === "editor-box" && editorRect && editorRect.width > 0 && editorRect.height > 0) {
+      const widthRange = Math.max(1, editorRect.width - CAT_DOCK_WIDTH);
+      const heightRange = Math.max(1, editorRect.height - CAT_DOCK_HEIGHT);
+      const left = clamp(editorRect.left + widthRange * clamp(position.xRatio ?? 0.82, 0, 1), 4, window.innerWidth - CAT_DOCK_WIDTH - 4);
+      const top = clamp(editorRect.top + heightRange * clamp(position.yRatio ?? 0, 0, 1), 4, window.innerHeight - CAT_DOCK_HEIGHT - 4);
+      return { left, top };
+    }
+
+    if (position?.mode === "right-edge") {
+      return {
+        left: clamp(window.innerWidth - CAT_DOCK_WIDTH, 4, window.innerWidth - CAT_DOCK_WIDTH - 4),
+        top: clamp(position.top ?? CAT_RIGHT_TOP_OFFSET, 8, window.innerHeight - CAT_DOCK_HEIGHT - 8)
+      };
+    }
+
     return {
-      left: clamp(position?.left ?? window.innerWidth - 96, 4, window.innerWidth - 76),
-      top: clamp(position?.top ?? window.innerHeight - 120, 4, window.innerHeight - 44)
+      left: clamp(position?.left ?? window.innerWidth - 96, 4, window.innerWidth - CAT_DOCK_WIDTH),
+      top: clamp(position?.top ?? window.innerHeight - 120, 4, window.innerHeight - CAT_DOCK_HEIGHT)
+    };
+  }
+
+  function getCatCustomMoveBounds(editorRect) {
+    const conversationRoot = typeof findConversationRoot === "function" ? findConversationRoot() : null;
+    const rootRect = conversationRoot?.getBoundingClientRect?.();
+    const left = rootRect && rootRect.width > CAT_DOCK_WIDTH
+      ? Math.max(4, rootRect.left)
+      : 4;
+    const right = rootRect && rootRect.width > CAT_DOCK_WIDTH
+      ? Math.min(window.innerWidth - 4, rootRect.right)
+      : window.innerWidth - 4;
+    const top = rootRect && rootRect.height > CAT_DOCK_HEIGHT
+      ? Math.min(Math.max(4, rootRect.top), editorRect.top)
+      : 4;
+    const bottom = Math.max(top + CAT_DOCK_HEIGHT, Math.min(window.innerHeight - 4, Math.max(editorRect.bottom, editorRect.top + CAT_DOCK_HEIGHT)));
+
+    return {
+      left: clamp(left, 4, window.innerWidth - CAT_DOCK_WIDTH - 4),
+      right: clamp(right, left + CAT_DOCK_WIDTH, window.innerWidth - 4),
+      top,
+      bottom
+    };
+  }
+
+  function createCatPositionFromDockRect(dockRect, editorRect) {
+    const centerX = dockRect.left + dockRect.width / 2;
+    const ratio = editorRect.width > 0 ? (centerX - editorRect.left) / editorRect.width : 0.82;
+    const offsetY = dockRect.top - (editorRect.top - getCatDockAnchorBottomOffset());
+
+    return {
+      mode: "editor-edge",
+      anchorVersion: CAT_POSITION_ANCHOR_VERSION,
+      ratio: clamp(ratio, 0.08, 0.92),
+      offsetY: clamp(offsetY, -6, 6)
     };
   }
 
@@ -358,10 +800,21 @@
     dock.style.setProperty("--ask-anchor-cat-left", `${position.left}px`);
     dock.style.setProperty("--ask-anchor-cat-right", "auto");
     dock.style.setProperty("--ask-anchor-cat-top", `${position.top}px`);
+    dock.style.setProperty("--ask-anchor-cat-shift", "0px");
     dock.style.removeProperty("bottom");
     if (catEyePointer) {
       scheduleCatEyeUpdate();
     }
+  }
+
+  function getCatDockAnchorBottomOffset(dock = document.getElementById(DOCK_ID)) {
+    const dockRect = dock?.getBoundingClientRect?.();
+    const catRect = dock?.querySelector?.(".ask-anchor-cat-image")?.getBoundingClientRect?.();
+    if (dockRect && catRect && catRect.height > 0) {
+      return catRect.bottom - dockRect.top;
+    }
+
+    return CAT_IMAGE_BOTTOM_OFFSET;
   }
 
   function applyTuckedCatDockPosition(dock) {
@@ -371,6 +824,7 @@
     dock.style.removeProperty("--ask-anchor-cat-left");
     dock.style.setProperty("--ask-anchor-cat-right", "-8px");
     dock.style.setProperty("--ask-anchor-cat-top", `${top}px`);
+    dock.style.setProperty("--ask-anchor-cat-shift", "0px");
     dock.style.removeProperty("bottom");
     if (catEyePointer) {
       scheduleCatEyeUpdate();
@@ -406,11 +860,50 @@
       }
       const value = JSON.parse(raw);
       if (
+        value?.mode === "right-edge"
+        && typeof value.top === "number"
+      ) {
+        return {
+          mode: "right-edge",
+          anchorVersion: CAT_POSITION_ANCHOR_VERSION,
+          top: value.top
+        };
+      }
+      if (
+        value?.mode === "editor-workspace"
+        && typeof value.xRatio === "number"
+        && typeof value.yRatio === "number"
+      ) {
+        return {
+          mode: "editor-workspace",
+          anchorVersion: CAT_POSITION_ANCHOR_VERSION,
+          xRatio: clamp(value.xRatio, 0, 1),
+          yRatio: clamp(value.yRatio, 0, 1)
+        };
+      }
+      if (
+        value?.mode === "editor-box"
+        && typeof value.xRatio === "number"
+        && typeof value.yRatio === "number"
+      ) {
+        return {
+          mode: "editor-box",
+          anchorVersion: CAT_POSITION_ANCHOR_VERSION,
+          xRatio: clamp(value.xRatio, 0, 1),
+          yRatio: clamp(value.yRatio, 0, 1)
+        };
+      }
+      if (
         value?.mode === "editor-edge"
         && typeof value.ratio === "number"
         && typeof value.offsetY === "number"
       ) {
-        return value;
+        return {
+          mode: "editor-edge",
+          anchorVersion: CAT_POSITION_ANCHOR_VERSION,
+          ratio: value.ratio,
+          offsetY: value.anchorVersion === CAT_POSITION_ANCHOR_VERSION ? value.offsetY : 0
+        };
       }
       if (typeof value?.left !== "number" || typeof value?.top !== "number") {
         return null;
@@ -472,9 +965,20 @@
         moveCatDrag,
         endCatDrag,
         updateCatDockPosition,
+        installPromptEditorTracking,
+        uninstallPromptEditorTracking,
+        schedulePromptEditorTrackingUpdate,
+        updatePromptEditorTracking,
+        observePromptEditorForCatDock,
+        getPromptEditorAnchorRect,
         applyRightCatDockPosition,
         captureCurrentCatDockPosition,
+        createRightEdgePositionFromPointer,
+        createCatPositionFromDockRect,
         createCatPositionFromPointer,
+        createCatBoxPositionFromPointer,
+        createCatWorkspacePositionFromPointer,
+        getCatCustomMoveBounds,
         getCatDockViewportPosition,
         applyCatDockPosition,
         applyTuckedCatDockPosition,

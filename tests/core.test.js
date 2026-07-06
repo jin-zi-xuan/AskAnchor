@@ -71,21 +71,6 @@ describe("settings normalization", () => {
   });
 });
 
-describe("branch state normalization", () => {
-  it("accepts only known persisted statuses", () => {
-    expect(core.normalizeBranchStatus("sent")).toBe("sent");
-    expect(core.normalizeBranchStatus("done")).toBe("done");
-    expect(core.normalizeBranchStatus("queued")).toBe("draft");
-    expect(core.normalizeBranchStatus(undefined)).toBe("draft");
-  });
-
-  it("normalizes empty and long titles", () => {
-    expect(core.normalizeBranchTitle(" \n\t ")).toBe("未命名分支");
-    expect(core.normalizeBranchTitle("  follow up  question  ")).toBe("follow up question");
-    expect(core.normalizeBranchTitle("abcdefghijklmnopqrstuvwxyz0123456789")).toBe("abcdefghijklmnopqrstuvwxyz...");
-  });
-});
-
 describe("message locator normalization", () => {
   it("sanitizes locator fields and stable attributes", () => {
     const locator = core.normalizeMessageLocator({

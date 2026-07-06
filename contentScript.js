@@ -5,8 +5,6 @@
   const LIST_ID = "ask-anchor-anchor-list";
   const PANEL_ID = "ask-anchor-anchor-panel";
   const PANEL_LIST_ID = "ask-anchor-anchor-panel-list";
-  const BRANCH_PANEL_ID = "ask-anchor-branch-panel";
-  const BRANCH_LIST_ID = "ask-anchor-branch-list";
   const TIMELINE_ID = "ask-anchor-anchor-timeline";
   const TIMELINE_PREVIEW_ID = "ask-anchor-timeline-preview";
   const TOAST_ID = "ask-anchor-toast";
@@ -14,9 +12,7 @@
   const MARKER_CLASS = "ask-anchor-selection-marker";
   const MIN_SELECTION_LENGTH = 2;
   const MAX_ANCHORS = 30;
-  const MAX_BRANCHES = 20;
   const ANCHOR_NAME_LENGTH = 28;
-  const BRANCH_TITLE_LENGTH = 26;
   const SELECTION_CONTEXT_LENGTH = 42;
   const ANCHOR_STATUS_UNRESOLVED = "unresolved";
   const ANCHOR_STATUS_UNDERSTOOD = "understood";
@@ -26,16 +22,12 @@
   const CONVERSATION_ROOT_REFRESH_DELAY = 900;
   const CONVERSATION_TIMELINE_RENDER_DELAY = 450;
   const STORAGE_KEY_PREFIX = "ask-anchor:anchors:";
-  const BRANCH_STORAGE_KEY_PREFIX = "ask-anchor:branches:";
   const SETTINGS_STORAGE_KEY = "askAnchorSettings";
   const LEGACY_SETTINGS_STORAGE_KEY = "ask-anchor:settings";
   const SETTINGS_SCHEMA_VERSION = 1;
   const CAT_POSITION_STORAGE_KEY = "ask-anchor:cat-position";
   const TUCKED_CAT_TOP_STORAGE_KEY = "ask-anchor:tucked-cat-top";
   const DEFAULT_FOLLOW_UP_TEMPLATE_ID = "explain";
-  const BRANCH_STATUS_DRAFT = "draft";
-  const BRANCH_STATUS_SENT = "sent";
-  const BRANCH_STATUS_DONE = "done";
   const DEFAULT_SETTINGS = Object.freeze({
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     showCat: true,
@@ -72,8 +64,8 @@
     },
     {
       id: "code",
-      label: "\u6307\u51fa\u4ee3\u7801\u95ee\u9898",
-      instruction: "\u8bf7\u7ed3\u5408\u4e0a\u4e0b\u6587\u89e3\u91ca\u8fd9\u6bb5\u4ee3\u7801\u7684\u4f5c\u7528\u3001\u8f93\u5165\u8f93\u51fa\u548c\u53ef\u80fd\u7684\u95ee\u9898\u3002"
+      label: "\u89e3\u91ca\u4ee3\u7801\u95ee\u9898",
+      instruction: "\u8bf7\u7ed3\u5408\u4e0a\u4e0b\u6587\u89e3\u91ca\u8fd9\u6bb5\u4ee3\u7801\u7684\u4f5c\u7528\u3001\u8f93\u5165\u8f93\u51fa\u3001\u8fd0\u884c\u903b\u8f91\u548c\u53ef\u80fd\u7684\u95ee\u9898\u3002"
     },
     {
       id: "translate",
@@ -96,11 +88,7 @@
   let currentSelection = null;
   let lastValidSelection = null;
   let anchors = [];
-  let branches = [];
   let activeAnchorId = null;
-  let activeBranchId = null;
-  let activeBranchAnchorId = null;
-  let editingBranchId = null;
   let pendingFollowUp = null;
   let pendingFollowUpTimer = null;
   let pendingFollowUpPollTimer = null;
@@ -114,9 +102,9 @@
   let askAnchorSettings = { ...DEFAULT_SETTINGS };
   let selectionTimer = null;
   let activeAnchorStorageKey = null;
-  let activeBranchStorageKey = null;
   let conversationTimelineTimer = null;
   let conversationRootRefreshTimer = null;
+  let routePollTimer = null;
   let anchorLoadTimer = null;
   let initialTimelineTimer = null;
   let askAnchorStarted = false;
@@ -153,8 +141,6 @@
     LIST_ID,
     PANEL_ID,
     PANEL_LIST_ID,
-    BRANCH_PANEL_ID,
-    BRANCH_LIST_ID,
     TIMELINE_ID,
     TIMELINE_PREVIEW_ID,
     TOAST_ID,
@@ -162,9 +148,7 @@
     MARKER_CLASS,
     MIN_SELECTION_LENGTH,
     MAX_ANCHORS,
-    MAX_BRANCHES,
     ANCHOR_NAME_LENGTH,
-    BRANCH_TITLE_LENGTH,
     SELECTION_CONTEXT_LENGTH,
     ANCHOR_STATUS_UNRESOLVED,
     ANCHOR_STATUS_UNDERSTOOD,
@@ -174,7 +158,6 @@
     CONVERSATION_ROOT_REFRESH_DELAY,
     CONVERSATION_TIMELINE_RENDER_DELAY,
     STORAGE_KEY_PREFIX,
-    BRANCH_STORAGE_KEY_PREFIX,
     SETTINGS_STORAGE_KEY,
     LEGACY_SETTINGS_STORAGE_KEY,
     SETTINGS_SCHEMA_VERSION,
@@ -183,9 +166,6 @@
     CAT_IMAGE_URL,
     CAT_PEEK_IMAGE_URL,
     DEFAULT_FOLLOW_UP_TEMPLATE_ID,
-    BRANCH_STATUS_DRAFT,
-    BRANCH_STATUS_SENT,
-    BRANCH_STATUS_DONE,
     DEFAULT_SETTINGS,
     COMMANDS,
     core,
@@ -200,11 +180,7 @@
     currentSelection: { get: () => currentSelection, set: (value) => { currentSelection = value; } },
     lastValidSelection: { get: () => lastValidSelection, set: (value) => { lastValidSelection = value; } },
     anchors: { get: () => anchors, set: (value) => { anchors = value; } },
-    branches: { get: () => branches, set: (value) => { branches = value; } },
     activeAnchorId: { get: () => activeAnchorId, set: (value) => { activeAnchorId = value; } },
-    activeBranchId: { get: () => activeBranchId, set: (value) => { activeBranchId = value; } },
-    activeBranchAnchorId: { get: () => activeBranchAnchorId, set: (value) => { activeBranchAnchorId = value; } },
-    editingBranchId: { get: () => editingBranchId, set: (value) => { editingBranchId = value; } },
     pendingFollowUp: { get: () => pendingFollowUp, set: (value) => { pendingFollowUp = value; } },
     pendingFollowUpTimer: { get: () => pendingFollowUpTimer, set: (value) => { pendingFollowUpTimer = value; } },
     pendingFollowUpPollTimer: { get: () => pendingFollowUpPollTimer, set: (value) => { pendingFollowUpPollTimer = value; } },
@@ -218,9 +194,9 @@
     askAnchorSettings: { get: () => askAnchorSettings, set: (value) => { askAnchorSettings = value; } },
     selectionTimer: { get: () => selectionTimer, set: (value) => { selectionTimer = value; } },
     activeAnchorStorageKey: { get: () => activeAnchorStorageKey, set: (value) => { activeAnchorStorageKey = value; } },
-    activeBranchStorageKey: { get: () => activeBranchStorageKey, set: (value) => { activeBranchStorageKey = value; } },
     conversationTimelineTimer: { get: () => conversationTimelineTimer, set: (value) => { conversationTimelineTimer = value; } },
     conversationRootRefreshTimer: { get: () => conversationRootRefreshTimer, set: (value) => { conversationRootRefreshTimer = value; } },
+    routePollTimer: { get: () => routePollTimer, set: (value) => { routePollTimer = value; } },
     anchorLoadTimer: { get: () => anchorLoadTimer, set: (value) => { anchorLoadTimer = value; } },
     initialTimelineTimer: { get: () => initialTimelineTimer, set: (value) => { initialTimelineTimer = value; } },
     askAnchorStarted: { get: () => askAnchorStarted, set: (value) => { askAnchorStarted = value; } },
@@ -233,8 +209,8 @@
   [
     modules.core,
     modules.selection,
+    modules.followup,
     modules.anchors,
-    modules.branches,
     modules.timeline,
     modules.catDock,
     modules.dom
@@ -248,7 +224,6 @@
   catDockPosition = ctx.loadCatDockPosition();
   tuckedCatTop = ctx.loadTuckedCatTop();
   activeAnchorStorageKey = ctx.getAnchorStorageKey();
-  activeBranchStorageKey = ctx.getBranchStorageKey();
 
   ctx.installExtensionMessageListeners();
   ctx.loadSettingsFromStorage();

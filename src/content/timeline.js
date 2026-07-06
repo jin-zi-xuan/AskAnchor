@@ -31,7 +31,7 @@
       return;
     }
 
-    const messages = collectTimelineMessageElements();
+    const messages = collectDistinctTimelineMessageElements();
     if (messages.length === 0) {
       resetConversationTimeline();
       return;
@@ -69,7 +69,7 @@
         }
       }
 
-      tick.setAttribute("aria-label", `\u5b9a\u4f4d\u5230\u5bf9\u8bdd ${index + 1}`);
+      tick.setAttribute("aria-label", `\u5b9a\u4f4d\u5230\u95ee\u9898 ${index + 1}`);
       timeline.appendChild(tick);
     });
   }
@@ -81,8 +81,9 @@
     tick.addEventListener("click", (event) => {
       event.stopPropagation();
       closeAnchorList();
-      scrollToConversationMessage(message);
-      setActiveTimelineMessage(message);
+      const currentMessage = timelineState.tickToMessage.get(tick) || message;
+      scrollToConversationMessage(currentMessage);
+      setActiveTimelineMessage(currentMessage);
     });
     tick.addEventListener("mouseenter", () => showTimelinePreview(tick, createTimelinePreview(message, getTimelineTickIndex(tick))));
     tick.addEventListener("focus", () => showTimelinePreview(tick, createTimelinePreview(message, getTimelineTickIndex(tick))));
@@ -212,11 +213,62 @@
     return nativeSelectors.some((selector) => {
       try {
         return Array.from(document.querySelectorAll(selector))
-          .some((node) => !node.closest(`#${DOCK_ID}, #${PANEL_ID}, #${BRANCH_PANEL_ID}, #${TIMELINE_ID}, #${TIMELINE_PREVIEW_ID}`) && isVisible(node));
+          .some((node) => !node.closest(`#${DOCK_ID}, #${PANEL_ID}, #${TIMELINE_ID}, #${TIMELINE_PREVIEW_ID}`) && isVisible(node));
       } catch (error) {
         return false;
       }
     });
+  }
+
+  function collectDistinctTimelineMessageElements() {
+    return getDistinctTimelineMessages(collectTimelineMessageElements());
+  }
+
+  function getDistinctTimelineMessages(messages) {
+    const distinctMessages = [];
+    const seenTexts = new Set();
+
+    messages.forEach((message) => {
+      const text = normalizeTimelineQuestionText(message);
+      if (!text) {
+        return;
+      }
+
+      const existingIndex = distinctMessages.findIndex((existingMessage) => (
+        existingMessage.contains(message) || message.contains(existingMessage)
+      ));
+      if (existingIndex !== -1) {
+        const existingMessage = distinctMessages[existingIndex];
+        const preferredMessage = chooseTimelineMessageRoot(existingMessage, message);
+        distinctMessages[existingIndex] = preferredMessage;
+        seenTexts.add(text);
+        return;
+      }
+
+      if (seenTexts.has(text)) {
+        return;
+      }
+
+      distinctMessages.push(message);
+      seenTexts.add(text);
+    });
+
+    return distinctMessages;
+  }
+
+  function chooseTimelineMessageRoot(left, right) {
+    if (left.contains(right)) {
+      return left;
+    }
+    if (right.contains(left)) {
+      return right;
+    }
+    return left;
+  }
+
+  function normalizeTimelineQuestionText(message) {
+    return normalizeComparableText(message?.innerText || message?.textContent || "")
+      .toLowerCase();
   }
 
   function collectTimelineMessageElements() {
@@ -333,6 +385,10 @@
         setActiveTimelineMessage,
         getTimelineTickIndex,
         hasNativeConversationTimeline,
+        collectDistinctTimelineMessageElements,
+        getDistinctTimelineMessages,
+        chooseTimelineMessageRoot,
+        normalizeTimelineQuestionText,
         collectTimelineMessageElements,
         getTimelineMessageSelectors,
         createTimelinePreview,

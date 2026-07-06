@@ -741,29 +741,52 @@
       "textarea[data-testid='prompt-textarea']",
       "[data-testid='chat-input'] textarea",
       "[data-testid='composer'] textarea",
+      "[data-testid='chat-input'] [contenteditable='true']",
+      "[data-testid='composer'] [contenteditable='true']",
+      "[aria-label*='message' i]",
       "[aria-label*='Message']",
+      "[aria-label*='ask' i]",
       "[aria-label*='Ask']",
+      "[aria-label*='prompt' i]",
       "[aria-label*='Send']",
       "[aria-label*='\u8f93\u5165']",
       "[aria-label*='\u63d0\u95ee']",
+      "[placeholder*='message' i]",
       "[placeholder*='Message']",
+      "[placeholder*='ask' i]",
       "[placeholder*='Ask']",
+      "[placeholder*='prompt' i]",
       "[placeholder*='\u8f93\u5165']",
       "[placeholder*='\u63d0\u95ee']",
       "textarea",
+      "rich-textarea [contenteditable='true']",
+      ".ql-editor[contenteditable='true']",
+      ".ProseMirror[contenteditable='true']",
       "[contenteditable='true'][data-lexical-editor='true']",
       "[contenteditable='true'][role='textbox']",
       "[contenteditable='true']"
     ];
 
-    return selectors
-      .map((selector) => document.querySelector(selector))
-      .find((node) => (
-        node
-        && isPromptEditorCandidate(node)
-        && !node.closest(`#${DOCK_ID}, #${PANEL_ID}, #${BRANCH_PANEL_ID}, #${BUTTON_ID}, #${TOAST_ID}`)
-        && isVisible(node)
+    for (const selector of selectors) {
+      let candidates;
+      try {
+        candidates = Array.from(document.querySelectorAll(selector));
+      } catch (error) {
+        continue;
+      }
+
+      const node = candidates.find((candidate) => (
+        candidate
+        && isPromptEditorCandidate(candidate)
+        && !candidate.closest(`#${DOCK_ID}, #${PANEL_ID}, #${BRANCH_PANEL_ID}, #${BUTTON_ID}, #${TOAST_ID}`)
+        && isVisible(candidate)
       ));
+      if (node) {
+        return node;
+      }
+    }
+
+    return null;
   }
 
   function isPromptEditorCandidate(node) {
