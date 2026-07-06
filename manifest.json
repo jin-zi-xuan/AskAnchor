@@ -3,7 +3,7 @@
   "name": "AskAnchor",
   "version": "0.2.0",
   "description": "Ask follow-up questions from selected AI response text and jump back to saved anchors.",
-  "permissions": ["clipboardWrite", "storage", "tabs"],
+  "permissions": ["clipboardWrite", "storage"],
   "background": {
     "service_worker": "background.js"
   },

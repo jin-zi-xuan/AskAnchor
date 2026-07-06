@@ -93,8 +93,8 @@
   right: -8px;
   top: var(--ask-anchor-cat-top, auto);
   bottom: auto;
-  width: 68px;
-  min-width: 68px;
+  width: 60px;
+  min-width: 60px;
   justify-items: end;
   --ask-anchor-cat-shift: 0;
 }
@@ -239,8 +239,8 @@
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-dock-button {
   animation: none;
-  width: 68px;
-  height: 84px;
+  width: 60px;
+  height: 74px;
   transform: translateX(0);
 }
 
@@ -248,7 +248,7 @@
   left: auto;
   right: 0;
   bottom: 0;
-  width: 68px;
+  width: 60px;
   animation: none;
   transform: translateZ(0);
   transform-origin: 50% 50%;
@@ -260,29 +260,29 @@
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-eye {
   display: block;
-  width: 13px;
-  height: 13px;
+  width: 11.5px;
+  height: 11.5px;
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-eye--left {
-  left: 23px;
-  top: 46px;
+  left: 20px;
+  top: 41px;
   transform: rotate(-14deg);
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-eye--right {
-  left: 47px;
-  top: 33px;
+  left: 41px;
+  top: 29px;
   transform: rotate(-8deg);
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-pupil {
-  width: 8px;
-  height: 9px;
+  width: 7px;
+  height: 8px;
 }
 
 #ask-anchor-anchor-dock.is-tucked .ask-anchor-cat-hint {
-  right: 64px;
+  right: 56px;
   bottom: 34px;
   display: block;
 }

@@ -110,58 +110,127 @@
     return branches.find((branch) => branch.id === activeBranchId) || null;
   }
 
+  function serializeBranchesForStorage() {
+    return branches.slice(0, MAX_BRANCHES).map((branch) => ({
+      id: branch.id,
+      anchorId: branch.anchorId,
+      title: branch.title,
+      prompt: branch.prompt,
+      status: normalizeBranchStatus(branch.status),
+      createdAt: branch.createdAt,
+      updatedAt: branch.updatedAt
+    }));
+  }
+
   function persistBranchesToSession() {
+    const payload = serializeBranchesForStorage();
+    const storageKey = getBranchStorageKey();
+
     try {
-      const payload = branches.slice(0, MAX_BRANCHES).map((branch) => ({
-        id: branch.id,
-        anchorId: branch.anchorId,
-        title: branch.title,
-        prompt: branch.prompt,
-        status: normalizeBranchStatus(branch.status),
-        createdAt: branch.createdAt,
-        updatedAt: branch.updatedAt
-      }));
-      sessionStorage.setItem(getBranchStorageKey(), JSON.stringify(payload));
+      sessionStorage.setItem(storageKey, JSON.stringify(payload));
     } catch (error) {
       console.debug("[AskAnchor] Failed to persist branches:", error);
     }
+
+    persistBranchesToLocalStorage(storageKey, payload);
+  }
+
+  function persistBranchesToLocalStorage(storageKey, payload) {
+    setPersistentStorageItem(storageKey, payload, "branches");
   }
 
   function loadBranchesFromSession() {
+    const storageKey = getBranchStorageKey();
+    activeBranchStorageKey = storageKey;
+
+    loadBranchesFromLocalStorage(storageKey)
+      .then((loaded) => {
+        if (!loaded || activeBranchStorageKey !== storageKey) {
+          return;
+        }
+
+        renderAnchorDock();
+        renderBranchPanel();
+      })
+      .catch((error) => {
+        console.debug("[AskAnchor] Failed to load branches from extension storage:", error);
+      });
+
+    loadBranchesFromSessionFallback(storageKey, { shouldPersistToLocal: false });
+  }
+
+  function loadBranchesFromSessionFallback(storageKey, options = {}) {
+    if (activeBranchStorageKey !== storageKey) {
+      return false;
+    }
+
     try {
-      activeBranchStorageKey = getBranchStorageKey();
-      const raw = sessionStorage.getItem(getBranchStorageKey());
+      const raw = sessionStorage.getItem(storageKey);
       if (!raw) {
         branches = [];
         activeBranchId = null;
         activeBranchAnchorId = null;
         renderAnchorDock();
         renderBranchPanel();
-        return;
+        return false;
       }
 
       const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        branches = [];
-        activeBranchId = null;
-        activeBranchAnchorId = null;
-        renderAnchorDock();
-        renderBranchPanel();
-        return;
+      const didLoad = applyStoredBranches(parsed);
+      if (options.shouldPersistToLocal && didLoad) {
+        persistBranchesToLocalStorage(storageKey, serializeBranchesForStorage());
       }
 
-      branches = parsed
-        .slice(0, MAX_BRANCHES)
-        .map(normalizeBranch)
-        .filter(Boolean);
-      if (activeBranchId && !branches.some((branch) => branch.id === activeBranchId)) {
-        activeBranchId = null;
-      }
       renderAnchorDock();
       renderBranchPanel();
+      return didLoad;
     } catch (error) {
       console.debug("[AskAnchor] Failed to load branches:", error);
+      return false;
     }
+  }
+
+  async function loadBranchesFromLocalStorage(storageKey) {
+    if (!getExtensionStorageArea()?.get) {
+      return loadBranchesFromSessionFallback(storageKey, { shouldPersistToLocal: false });
+    }
+
+    const items = await getPersistentStorageItem(storageKey);
+    if (activeBranchStorageKey !== storageKey) {
+      return false;
+    }
+
+    const storedValue = items?.[storageKey];
+    if (Array.isArray(storedValue)) {
+      return applyStoredBranches(storedValue);
+    }
+
+    return loadBranchesFromSessionFallback(storageKey, { shouldPersistToLocal: true });
+  }
+
+  function getBranchStorageKey() {
+    return `${BRANCH_STORAGE_KEY_PREFIX}${location.origin}${location.pathname}${location.search}`;
+  }
+
+  function applyStoredBranches(storedBranches) {
+    if (!Array.isArray(storedBranches) || storedBranches.length === 0) {
+      branches = [];
+      activeBranchId = null;
+      activeBranchAnchorId = null;
+      return false;
+    }
+
+    branches = storedBranches
+      .slice(0, MAX_BRANCHES)
+      .map(normalizeBranch)
+      .filter(Boolean);
+    if (activeBranchId && !branches.some((branch) => branch.id === activeBranchId)) {
+      activeBranchId = null;
+    }
+    if (activeBranchAnchorId && !branches.some((branch) => branch.anchorId === activeBranchAnchorId)) {
+      activeBranchAnchorId = null;
+    }
+    return branches.length > 0;
   }
 
   function normalizeBranch(item) {
@@ -853,6 +922,7 @@
         getActiveBranch,
         persistBranchesToSession,
         loadBranchesFromSession,
+        getBranchStorageKey,
         normalizeBranch,
         normalizeBranchStatus,
         getBranchStatusLabel,

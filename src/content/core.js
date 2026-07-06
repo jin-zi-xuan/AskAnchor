@@ -7,6 +7,10 @@
     return getExtensionApi()?.storage?.local || null;
   }
 
+  function getExtensionStorageArea() {
+    return getExtensionApi()?.storage?.local || null;
+  }
+
   function usesPromiseExtensionStorage() {
     return Boolean(globalThis.browser?.storage?.local);
   }
@@ -159,6 +163,60 @@
     window.addEventListener("hashchange", handleUrlChangeIfNeeded);
     wrapHistoryMethod("pushState");
     wrapHistoryMethod("replaceState");
+  }
+
+  function getPersistentStorageItem(storageKey) {
+    const storageArea = getExtensionStorageArea();
+    if (!storageArea?.get) {
+      return Promise.resolve({});
+    }
+
+    return new Promise((resolve) => {
+      try {
+        if (usesPromiseExtensionStorage()) {
+          storageArea.get(storageKey).then((items) => resolve(items || {})).catch(() => resolve({}));
+          return;
+        }
+
+        const maybePromise = storageArea.get(storageKey, (items) => resolve(items || {}));
+        if (maybePromise?.then) {
+          maybePromise.then((items) => resolve(items || {})).catch(() => resolve({}));
+        }
+      } catch (error) {
+        resolve({});
+      }
+    });
+  }
+
+  function setPersistentStorageItem(storageKey, value, debugLabel = "data") {
+    const storageArea = getExtensionStorageArea();
+    if (!storageArea?.set) {
+      return;
+    }
+
+    try {
+      const data = { [storageKey]: value };
+      if (usesPromiseExtensionStorage()) {
+        storageArea.set(data).catch((error) => {
+          console.debug(`[AskAnchor] Failed to persist ${debugLabel} to extension storage:`, error);
+        });
+        return;
+      }
+
+      const maybePromise = storageArea.set(data, () => {
+        const error = getExtensionApi()?.runtime?.lastError;
+        if (error) {
+          console.debug(`[AskAnchor] Failed to persist ${debugLabel} to extension storage:`, error);
+        }
+      });
+      if (maybePromise?.catch) {
+        maybePromise.catch((error) => {
+          console.debug(`[AskAnchor] Failed to persist ${debugLabel} to extension storage:`, error);
+        });
+      }
+    } catch (error) {
+      console.debug(`[AskAnchor] Failed to persist ${debugLabel} to extension storage:`, error);
+    }
   }
 
   function startRoutePolling() {
@@ -476,6 +534,7 @@
 
       return {
         getSettingsStorageArea,
+        getExtensionStorageArea,
         usesPromiseExtensionStorage,
         getDefaultEnabledPlatforms,
         normalizeEnabledPlatforms,
@@ -486,6 +545,8 @@
         installExtensionMessageListeners,
         applySettings,
         updateStoredSettings,
+        getPersistentStorageItem,
+        setPersistentStorageItem,
         installRouteChangeListeners,
         startRoutePolling,
         stopRoutePolling,

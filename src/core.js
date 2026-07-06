@@ -1,6 +1,12 @@
 (function registerAskAnchorCore(global) {
   const SETTINGS_SCHEMA_VERSION = 1;
   const MESSAGE_LOCATOR_SUMMARY_LENGTH = 220;
+  const BRANCH_TITLE_LENGTH = 26;
+  const BRANCH_STATUSES = Object.freeze({
+    DRAFT: "draft",
+    SENT: "sent",
+    DONE: "done"
+  });
   const DEFAULT_SETTINGS = Object.freeze({
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     showCat: true,
@@ -88,6 +94,23 @@
     };
   }
 
+  function normalizeBranchStatus(status) {
+    return status === BRANCH_STATUSES.SENT || status === BRANCH_STATUSES.DONE
+      ? status
+      : BRANCH_STATUSES.DRAFT;
+  }
+
+  function normalizeBranchTitle(title) {
+    const normalized = String(title || "").replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return "\u672a\u547d\u540d\u5206\u652f";
+    }
+    if (normalized.length <= BRANCH_TITLE_LENGTH) {
+      return normalized;
+    }
+    return `${normalized.slice(0, BRANCH_TITLE_LENGTH)}...`;
+  }
+
   function scoreTextSimilarity(currentText, savedText, maxScore) {
     const current = normalizeComparableText(currentText);
     const saved = normalizeComparableText(savedText);
@@ -134,11 +157,14 @@
 
   const api = {
     DEFAULT_SETTINGS,
+    BRANCH_STATUSES,
     normalizeComparableText,
     normalizeEnabledPlatforms,
     normalizeSettings,
     normalizeMessageLocator,
     normalizeStableAttribute,
+    normalizeBranchStatus,
+    normalizeBranchTitle,
     scoreTextSimilarity,
     scoreSelectorContextPresence,
     findTextOccurrences

@@ -51,34 +51,7 @@
   }
 
   function persistAnchorsToLocalStorage(storageKey, payload) {
-    const storageArea = getExtensionApi()?.storage?.local;
-    if (!storageArea?.set) {
-      return;
-    }
-
-    try {
-      const data = { [storageKey]: payload };
-      if (usesPromiseExtensionStorage()) {
-        storageArea.set(data).catch((error) => {
-          console.debug("[AskAnchor] Failed to persist anchors to extension storage:", error);
-        });
-        return;
-      }
-
-      const maybePromise = storageArea.set(data, () => {
-        const error = getExtensionApi()?.runtime?.lastError;
-        if (error) {
-          console.debug("[AskAnchor] Failed to persist anchors to extension storage:", error);
-        }
-      });
-      if (maybePromise?.catch) {
-        maybePromise.catch((error) => {
-          console.debug("[AskAnchor] Failed to persist anchors to extension storage:", error);
-        });
-      }
-    } catch (error) {
-      console.debug("[AskAnchor] Failed to persist anchors to extension storage:", error);
-    }
+    setPersistentStorageItem(storageKey, payload, "anchors");
   }
 
   function loadAnchorsFromSession() {
@@ -129,12 +102,11 @@
   }
 
   async function loadAnchorsFromLocalStorage(storageKey) {
-    const storageArea = getExtensionApi()?.storage?.local;
-    if (!storageArea?.get) {
+    if (!getExtensionStorageArea()?.get) {
       return loadAnchorsFromSessionFallback(storageKey, { shouldPersistToLocal: false });
     }
 
-    const items = await getExtensionStorageItem(storageArea, storageKey);
+    const items = await getPersistentStorageItem(storageKey);
     if (activeAnchorStorageKey !== storageKey) {
       return false;
     }
@@ -145,24 +117,6 @@
     }
 
     return loadAnchorsFromSessionFallback(storageKey, { shouldPersistToLocal: true });
-  }
-
-  function getExtensionStorageItem(storageArea, storageKey) {
-    return new Promise((resolve) => {
-      try {
-        if (usesPromiseExtensionStorage()) {
-          storageArea.get(storageKey).then((items) => resolve(items || {})).catch(() => resolve({}));
-          return;
-        }
-
-        const maybePromise = storageArea.get(storageKey, (items) => resolve(items || {}));
-        if (maybePromise?.then) {
-          maybePromise.then((items) => resolve(items || {})).catch(() => resolve({}));
-        }
-      } catch (error) {
-        resolve({});
-      }
-    });
   }
 
   function applyStoredAnchors(storedAnchors) {
@@ -700,7 +654,7 @@
   }
 
   function resolveAnchorRange(anchor) {
-    if (anchor.range && isRangeUsable(anchor.range)) {
+    if (isAnchorRangeUsable(anchor.range, anchor.selector)) {
       return anchor.range.cloneRange();
     }
 
@@ -720,8 +674,49 @@
       }
     }
 
-    const root = anchor.element && document.contains(anchor.element) ? anchor.element : document.body;
-    return findRangeFromSelector(anchor.selector, root) || findRangeFromSelector(anchor.selector, document.body);
+    const fallbackRoots = getAnchorSearchFallbackRoots(anchor);
+    for (const root of fallbackRoots) {
+      const fallbackRange = findRangeFromSelector(anchor.selector, root);
+      if (fallbackRange) {
+        anchor.element = root;
+        return fallbackRange;
+      }
+    }
+
+    return null;
+  }
+
+  function isAnchorRangeUsable(range, selector) {
+    if (!isRangeUsable(range)) {
+      return false;
+    }
+
+    const assistantMessage = findAssistantMessageElement(range.commonAncestorContainer);
+    if (!assistantMessage) {
+      return false;
+    }
+
+    if (!selector?.exact) {
+      return true;
+    }
+
+    return normalizeTextForAnchorComparison(range.toString()) === normalizeTextForAnchorComparison(selector.exact);
+  }
+
+  function getAnchorSearchFallbackRoots(anchor) {
+    const roots = [];
+    if (
+      anchor.element
+      && document.contains(anchor.element)
+      && anchor.element !== document.body
+      && anchor.element !== document.documentElement
+      && !isInsideUserMessage(anchor.element)
+    ) {
+      roots.push(anchor.element);
+    }
+
+    roots.push(...collectAssistantMessageElements());
+    return uniqueElements(roots);
   }
 
 
@@ -732,20 +727,7 @@
     }
 
     const normalizedStartRange = Math.max(0, Math.min(selector.start || 0, snapshot.text.length));
-    const candidates = [];
-    let index = snapshot.text.indexOf(selector.exact, Math.max(0, normalizedStartRange - 500));
-    while (index !== -1) {
-      candidates.push(index);
-      index = snapshot.text.indexOf(selector.exact, index + 1);
-    }
-
-    if (candidates.length === 0) {
-      index = snapshot.text.indexOf(selector.exact);
-      while (index !== -1) {
-        candidates.push(index);
-        index = snapshot.text.indexOf(selector.exact, index + 1);
-      }
-    }
+    const candidates = findAllTextMatches(snapshot.text, selector.exact);
 
     const bestStart = candidates
       .map((start) => ({
@@ -770,19 +752,7 @@
 
     const normalizedStart = getNormalizedOffsetForOriginalOffset(normalizedText.map, selector.start || 0);
     const candidates = [];
-    let index = normalizedText.text.indexOf(normalizedExact.text, Math.max(0, normalizedStart - 500));
-    while (index !== -1) {
-      candidates.push(index);
-      index = normalizedText.text.indexOf(normalizedExact.text, index + 1);
-    }
-
-    if (candidates.length === 0) {
-      index = normalizedText.text.indexOf(normalizedExact.text);
-      while (index !== -1) {
-        candidates.push(index);
-        index = normalizedText.text.indexOf(normalizedExact.text, index + 1);
-      }
-    }
+    const candidates = findAllTextMatches(normalizedText.text, normalizedExact.text);
 
     const bestNormalizedStart = candidates
       .map((start) => ({
@@ -842,6 +812,24 @@
     };
   }
 
+  function normalizeTextForAnchorComparison(text) {
+    return normalizeTextWithOffsetMap(text).text;
+  }
+
+  function findAllTextMatches(text, exact) {
+    const matches = [];
+    if (!text || !exact) {
+      return matches;
+    }
+
+    let index = text.indexOf(exact);
+    while (index !== -1) {
+      matches.push(index);
+      index = text.indexOf(exact, index + 1);
+    }
+    return matches;
+  }
+
   function getNormalizedOffsetForOriginalOffset(map, originalOffset) {
     const offset = Math.max(0, originalOffset || 0);
     const index = map.findIndex((originalIndex) => originalIndex >= offset);
@@ -866,7 +854,7 @@
       score += 3;
     }
 
-    score -= Math.min(2, Math.abs(normalizedStart - (expectedNormalizedStart || 0)) / 1000);
+    score -= Math.min(8, Math.abs(normalizedStart - (expectedNormalizedStart || 0)) / 250);
     score += 0.5;
     return score;
   }
@@ -883,7 +871,7 @@
     if (selector.suffix && suffix.startsWith(selector.suffix)) {
       score += 3;
     }
-    score -= Math.min(2, Math.abs(start - (selector.start || 0)) / 1000);
+    score -= Math.min(8, Math.abs(start - (selector.start || 0)) / 250);
     return score;
   }
 
