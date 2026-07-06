@@ -11,7 +11,7 @@
   const HIGHLIGHT_CLASS = "ask-anchor-highlight";
   const MARKER_CLASS = "ask-anchor-selection-marker";
   const MIN_SELECTION_LENGTH = 2;
-  const MAX_ANCHORS = 30;
+  const MAX_ANCHORS = 50;
   const ANCHOR_NAME_LENGTH = 28;
   const SELECTION_CONTEXT_LENGTH = 42;
   const ANCHOR_STATUS_UNRESOLVED = "unresolved";
