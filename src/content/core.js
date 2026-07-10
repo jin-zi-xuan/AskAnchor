@@ -7,6 +7,10 @@
     return getExtensionApi()?.storage?.local || null;
   }
 
+  function getExtensionStorageArea() {
+    return getExtensionApi()?.storage?.local || null;
+  }
+
   function usesPromiseExtensionStorage() {
     return Boolean(globalThis.browser?.storage?.local);
   }
@@ -84,14 +88,11 @@
         return;
       }
 
-      applySettings(normalizeSettings(settingsChange.newValue), {
-        captureCustomPosition: true
-      });
+      applySettings(normalizeSettings(settingsChange.newValue));
     });
   }
 
-  function applySettings(nextSettings, options = {}) {
-    const previousSettings = askAnchorSettings;
+  function applySettings(nextSettings) {
     askAnchorSettings = normalizeSettings(nextSettings);
 
     if (!isCurrentPlatformEnabled()) {
@@ -115,16 +116,6 @@
 
     if (!askAnchorSettings.eyeTracking) {
       resetCatEyes();
-    }
-
-    if (
-      askAnchorSettings.catDefaultPosition === "custom"
-      && !catDockPosition
-      && options.captureCustomPosition
-      && previousSettings.catDefaultPosition !== "custom"
-    ) {
-      catDockPosition = captureCurrentCatDockPosition();
-      saveCatDockPosition(catDockPosition);
     }
 
     if (!askAnchorSettings.showCat) {
@@ -172,6 +163,70 @@
     window.addEventListener("hashchange", handleUrlChangeIfNeeded);
     wrapHistoryMethod("pushState");
     wrapHistoryMethod("replaceState");
+  }
+
+  function getPersistentStorageItem(storageKey) {
+    const storageArea = getExtensionStorageArea();
+    if (!storageArea?.get) {
+      return Promise.resolve({});
+    }
+
+    return new Promise((resolve) => {
+      try {
+        if (usesPromiseExtensionStorage()) {
+          storageArea.get(storageKey).then((items) => resolve(items || {})).catch(() => resolve({}));
+          return;
+        }
+
+        const maybePromise = storageArea.get(storageKey, (items) => resolve(items || {}));
+        if (maybePromise?.then) {
+          maybePromise.then((items) => resolve(items || {})).catch(() => resolve({}));
+        }
+      } catch (error) {
+        resolve({});
+      }
+    });
+  }
+
+  function setPersistentStorageItem(storageKey, value, debugLabel = "data") {
+    const storageArea = getExtensionStorageArea();
+    if (!storageArea?.set) {
+      return;
+    }
+
+    try {
+      const data = { [storageKey]: value };
+      if (usesPromiseExtensionStorage()) {
+        storageArea.set(data).catch((error) => {
+          console.debug(`[AskAnchor] Failed to persist ${debugLabel} to extension storage:`, error);
+        });
+        return;
+      }
+
+      const maybePromise = storageArea.set(data, () => {
+        const error = getExtensionApi()?.runtime?.lastError;
+        if (error) {
+          console.debug(`[AskAnchor] Failed to persist ${debugLabel} to extension storage:`, error);
+        }
+      });
+      if (maybePromise?.catch) {
+        maybePromise.catch((error) => {
+          console.debug(`[AskAnchor] Failed to persist ${debugLabel} to extension storage:`, error);
+        });
+      }
+    } catch (error) {
+      console.debug(`[AskAnchor] Failed to persist ${debugLabel} to extension storage:`, error);
+    }
+  }
+
+  function startRoutePolling() {
+    stopRoutePolling();
+    routePollTimer = window.setInterval(handleUrlChangeIfNeeded, 1000);
+  }
+
+  function stopRoutePolling() {
+    window.clearInterval(routePollTimer);
+    routePollTimer = null;
   }
 
   function uninstallRouteChangeListeners() {
@@ -268,7 +323,7 @@
 
   function findConversationRoot() {
     const platformRoot = activeAdapter.findConversationRoot?.();
-    if (platformRoot && !platformRoot.closest(`#${DOCK_ID}, #${PANEL_ID}, #${BRANCH_PANEL_ID}, #${TIMELINE_ID}, #${TIMELINE_PREVIEW_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
+    if (platformRoot && !platformRoot.closest(`#${DOCK_ID}, #${PANEL_ID}, #${TIMELINE_ID}, #${TIMELINE_PREVIEW_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
       return platformRoot;
     }
 
@@ -293,7 +348,7 @@
     for (const selector of selectors) {
       try {
         const node = document.querySelector(selector);
-        if (node && !node.closest(`#${DOCK_ID}, #${PANEL_ID}, #${BRANCH_PANEL_ID}, #${TIMELINE_ID}, #${TIMELINE_PREVIEW_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
+        if (node && !node.closest(`#${DOCK_ID}, #${PANEL_ID}, #${TIMELINE_ID}, #${TIMELINE_PREVIEW_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
           return node;
         }
       } catch (error) {
@@ -356,7 +411,7 @@
     }
 
     const element = node;
-    if (element.closest?.(`#${DOCK_ID}, #${PANEL_ID}, #${BRANCH_PANEL_ID}, #${TIMELINE_ID}, #${TIMELINE_PREVIEW_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
+    if (element.closest?.(`#${DOCK_ID}, #${PANEL_ID}, #${TIMELINE_ID}, #${TIMELINE_PREVIEW_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
       return false;
     }
 
@@ -385,6 +440,7 @@
     document.addEventListener("selectionchange", handleSelectionChangeDebounced);
     document.addEventListener("mouseup", handleSelectionChange);
     document.addEventListener("keyup", handleDocumentKeyup);
+    document.addEventListener("pointerdown", handleAnchorListOutsidePointerDown, true);
     document.addEventListener("click", handleDocumentClick);
     document.addEventListener("click", handlePossibleSendClick, true);
     document.addEventListener("keydown", handlePossibleSendKeydown, true);
@@ -394,14 +450,15 @@
     window.addEventListener("resize", updateCatDockPosition);
     window.addEventListener("scroll", updateCatDockPosition, { passive: true });
     document.addEventListener("scroll", updateCatDockPosition, { passive: true, capture: true });
+    installPromptEditorTracking();
 
     installRouteChangeListeners();
+    startRoutePolling();
     observeConversationRoot();
     renderAnchorDock();
     anchorLoadTimer = window.setTimeout(() => {
       anchorLoadTimer = null;
       loadAnchorsFromSession();
-      loadBranchesFromSession();
     }, 500);
     initialTimelineTimer = window.setTimeout(() => {
       initialTimelineTimer = null;
@@ -419,6 +476,7 @@
     document.removeEventListener("selectionchange", handleSelectionChangeDebounced);
     document.removeEventListener("mouseup", handleSelectionChange);
     document.removeEventListener("keyup", handleDocumentKeyup);
+    document.removeEventListener("pointerdown", handleAnchorListOutsidePointerDown, true);
     document.removeEventListener("click", handleDocumentClick);
     document.removeEventListener("click", handlePossibleSendClick, true);
     document.removeEventListener("keydown", handlePossibleSendKeydown, true);
@@ -428,7 +486,9 @@
     window.removeEventListener("resize", updateCatDockPosition);
     window.removeEventListener("scroll", updateCatDockPosition);
     document.removeEventListener("scroll", updateCatDockPosition, true);
+    uninstallPromptEditorTracking();
     uninstallRouteChangeListeners();
+    stopRoutePolling();
     conversationObserver.disconnect();
     observedConversationRoot = null;
     clearAskAnchorTimers();
@@ -441,6 +501,7 @@
     window.clearTimeout(conversationTimelineTimer);
     window.clearTimeout(anchorLoadTimer);
     window.clearTimeout(initialTimelineTimer);
+    window.clearInterval(routePollTimer);
     window.clearTimeout(pendingFollowUpTimer);
     window.clearInterval(pendingFollowUpPollTimer);
     window.clearInterval(sentQuestionStabilizeTimer);
@@ -451,6 +512,7 @@
     conversationTimelineTimer = null;
     anchorLoadTimer = null;
     initialTimelineTimer = null;
+    routePollTimer = null;
     pendingFollowUpTimer = null;
     pendingFollowUpPollTimer = null;
     sentQuestionStabilizeTimer = null;
@@ -459,22 +521,20 @@
   function removeAskAnchorUi() {
     resetCatEyes();
     resetConversationTimeline();
-    [BUTTON_ID, FOLLOW_UP_MENU_ID, DOCK_ID, PANEL_ID, BRANCH_PANEL_ID, TIMELINE_PREVIEW_ID, TOAST_ID]
+    [BUTTON_ID, FOLLOW_UP_MENU_ID, DOCK_ID, PANEL_ID, TIMELINE_PREVIEW_ID, TOAST_ID]
       .forEach((id) => document.getElementById(id)?.remove());
     document.querySelectorAll(`.${MARKER_CLASS}`).forEach((marker) => marker.remove());
     document.querySelectorAll(`.${HIGHLIGHT_CLASS}`).forEach((node) => node.classList.remove(HIGHLIGHT_CLASS));
     currentSelection = null;
     lastValidSelection = null;
     activeAnchorId = null;
-    activeBranchId = null;
-    activeBranchAnchorId = null;
-    editingBranchId = null;
     pendingFollowUp = null;
     document.documentElement.classList.remove("ask-anchor-cat-disabled", "ask-anchor-eye-tracking-disabled");
   }
 
       return {
         getSettingsStorageArea,
+        getExtensionStorageArea,
         usesPromiseExtensionStorage,
         getDefaultEnabledPlatforms,
         normalizeEnabledPlatforms,
@@ -485,7 +545,11 @@
         installExtensionMessageListeners,
         applySettings,
         updateStoredSettings,
+        getPersistentStorageItem,
+        setPersistentStorageItem,
         installRouteChangeListeners,
+        startRoutePolling,
+        stopRoutePolling,
         uninstallRouteChangeListeners,
         wrapHistoryMethod,
         restoreHistoryMethod,

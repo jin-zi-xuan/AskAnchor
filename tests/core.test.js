@@ -71,21 +71,6 @@ describe("settings normalization", () => {
   });
 });
 
-describe("branch state normalization", () => {
-  it("accepts only known persisted statuses", () => {
-    expect(core.normalizeBranchStatus("sent")).toBe("sent");
-    expect(core.normalizeBranchStatus("done")).toBe("done");
-    expect(core.normalizeBranchStatus("queued")).toBe("draft");
-    expect(core.normalizeBranchStatus(undefined)).toBe("draft");
-  });
-
-  it("normalizes empty and long titles", () => {
-    expect(core.normalizeBranchTitle(" \n\t ")).toBe("未命名分支");
-    expect(core.normalizeBranchTitle("  follow up  question  ")).toBe("follow up question");
-    expect(core.normalizeBranchTitle("abcdefghijklmnopqrstuvwxyz0123456789")).toBe("abcdefghijklmnopqrstuvwxyz...");
-  });
-});
-
 describe("message locator normalization", () => {
   it("sanitizes locator fields and stable attributes", () => {
     const locator = core.normalizeMessageLocator({
@@ -93,12 +78,14 @@ describe("message locator normalization", () => {
       conversationUrl: 42,
       assistantIndex: -3,
       stableMessageId: "x".repeat(230),
+      assistantTextHash: "a".repeat(80),
       stableAttributes: [
         { name: " data-message-id ", value: " abc ", depth: 2, tag: "DIV" },
         { name: "", value: "missing-name" },
         null
       ],
       previousUserSummary: `hello\n${"x".repeat(300)}`,
+      previousUserHash: "p".repeat(80),
       selectedStart: 12,
       selectedEnd: Number.NaN
     });
@@ -114,7 +101,9 @@ describe("message locator normalization", () => {
       selectedEnd: null
     });
     expect(locator.stableMessageId).toHaveLength(220);
+    expect(locator.assistantTextHash).toHaveLength(64);
     expect(locator.previousUserSummary).toHaveLength(220);
+    expect(locator.previousUserHash).toHaveLength(64);
   });
 });
 
@@ -128,6 +117,37 @@ describe("text matching helpers", () => {
     expect(core.findTextOccurrences("alpha beta alpha", "alpha")).toEqual([0, 11]);
     expect(core.findTextOccurrences("aaaa", "aa")).toEqual([0, 1, 2]);
     expect(core.findTextOccurrences("", "aa")).toEqual([]);
+  });
+
+  it("hashes the complete normalized text", () => {
+    const sharedPrefix = "x".repeat(140);
+    expect(core.hashComparableText(`${sharedPrefix} first`))
+      .not.toBe(core.hashComparableText(`${sharedPrefix} second`));
+    expect(core.hashComparableText(" one\n two ")).toBe(core.hashComparableText("one two"));
+  });
+
+  it("rejects an ambiguous best match", () => {
+    const match = core.selectUniqueBestMatch([
+      { id: "first", score: 12 },
+      { id: "second", score: 11 }
+    ], 7, 2);
+
+    expect(match).toBeNull();
+  });
+
+  it("accepts a uniquely stronger match", () => {
+    const match = core.selectUniqueBestMatch([
+      { id: "first", score: 14 },
+      { id: "second", score: 10 }
+    ], 7, 2);
+
+    expect(match?.id).toBe("first");
+  });
+
+  it("rejects a sole low-confidence match", () => {
+    expect(core.selectUniqueBestMatch([
+      { id: "only", score: 6 }
+    ], 7, 2)).toBeNull();
   });
 
   it("scores exact, saved-fragment, current-fragment, and missing similarity", () => {

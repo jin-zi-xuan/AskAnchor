@@ -18,8 +18,10 @@
       conversationUrl: getConversationUrl(),
       assistantIndex,
       stableMessageId: getStableMessageId(matchedMessage),
+      assistantTextHash: createElementTextHash(matchedMessage),
       stableAttributes: extractStableAttributes(matchedMessage),
       previousUserSummary: createMessageSummary(previousUserMessage),
+      previousUserHash: createElementTextHash(previousUserMessage),
       selectedStart: typeof selector?.start === "number" ? selector.start : null,
       selectedEnd: typeof selector?.end === "number" ? selector.end : null
     };
@@ -34,31 +36,81 @@
   }
 
   function resolveMessageElement(locator, selector) {
+    return resolveMessageElements(locator, selector)[0] || null;
+  }
+
+  function resolveMessageElements(locator, selector) {
     const normalizedLocator = normalizeMessageLocator(locator);
     if (!normalizedLocator) {
-      return null;
+      return [];
     }
 
     if (normalizedLocator.platform && normalizedLocator.platform !== activeAdapter.name) {
-      return null;
+      return [];
     }
     if (normalizedLocator.conversationUrl && normalizedLocator.conversationUrl !== getConversationUrl()) {
-      return null;
+      return [];
     }
 
     const assistantMessages = collectAssistantMessageElements();
     if (assistantMessages.length === 0) {
-      return null;
+      return [];
     }
 
-    const bestMatch = assistantMessages
+    const scoredMatches = assistantMessages
       .map((message, index) => ({
         message,
-        score: scoreMessageLocatorMatch(message, index, normalizedLocator, selector)
+        score: scoreMessageLocatorMatch(message, index, normalizedLocator, selector),
+        stableIdMatched: Boolean(
+          normalizedLocator.stableMessageId
+          && getStableMessageId(message) === normalizedLocator.stableMessageId
+        ),
+        containsSelection: messageContainsSelectorText(message, selector)
       }))
-      .sort((a, b) => b.score - a.score)[0];
+      .filter((match) => match.containsSelection)
+      .sort((a, b) => b.score - a.score);
 
-    return bestMatch && bestMatch.score >= 3 ? bestMatch.message : null;
+    try {
+      if (localStorage.getItem("ask-anchor:debug")) {
+        console.debug("[AskAnchor] resolveMessageElements", {
+          total: assistantMessages.length,
+          eligible: scoredMatches.length,
+          savedStableId: normalizedLocator.stableMessageId || "(none)",
+          savedIndex: normalizedLocator.assistantIndex,
+          top: scoredMatches.slice(0, 3).map((m) => ({
+            index: assistantMessages.indexOf(m.message),
+            score: Math.round(m.score * 10) / 10,
+            stableId: getStableMessageId(m.message) || "(none)"
+          }))
+        });
+      }
+    } catch (debugError) {
+      /* debug only */
+    }
+
+    const stableIdMatches = scoredMatches.filter((match) => (
+      match.stableIdMatched && !isPositionalMessageId(normalizedLocator.stableMessageId)
+    ));
+    if (stableIdMatches.length === 1) {
+      return [stableIdMatches[0].message];
+    }
+
+    const trustedMatch = core.selectUniqueBestMatch(scoredMatches, 7, 2);
+    return trustedMatch ? [trustedMatch.message] : [];
+  }
+
+  function messageContainsSelectorText(message, selector) {
+    if (!selector?.exact) {
+      return true;
+    }
+
+    const messageText = normalizeFullComparableText(collectVisibleText(message).text);
+    const selectedText = normalizeFullComparableText(selector.exact);
+    return Boolean(selectedText && messageText.includes(selectedText));
+  }
+
+  function normalizeFullComparableText(text) {
+    return String(text || "").replace(/\s+/g, " ").trim();
   }
 
   function scoreMessageLocatorMatch(message, index, locator, selector) {
@@ -69,26 +121,34 @@
       : Number.POSITIVE_INFINITY;
 
     if (indexDistance === 0) {
-      score += 5;
+      score += 3;
     } else if (indexDistance <= 2) {
-      score += 3 - indexDistance;
+      score += 2 - indexDistance * 0.5;
     } else if (Number.isFinite(indexDistance)) {
       score -= Math.min(3, indexDistance / 6);
     }
 
     score += scoreStableAttributeMatches(message, locator.stableAttributes);
     if (locator.stableMessageId && getStableMessageId(message) === locator.stableMessageId) {
-      score += 6;
+      score += isPositionalMessageId(locator.stableMessageId) ? 2 : 6;
     }
 
-    const previousUserSummary = createMessageSummary(findPreviousUserMessageForAssistant(message));
-    score += scoreTextSimilarity(previousUserSummary, locator.previousUserSummary, 4);
+    if (locator.assistantTextHash) {
+      score += createElementTextHash(message) === locator.assistantTextHash ? 12 : -4;
+    }
+
+    const previousUserMessage = findPreviousUserMessageForAssistant(message);
+    const previousUserSummary = createMessageSummary(previousUserMessage);
+    score += scoreTextSimilarity(previousUserSummary, locator.previousUserSummary, 7);
+    if (locator.previousUserHash) {
+      score += createElementTextHash(previousUserMessage) === locator.previousUserHash ? 10 : -5;
+    }
 
     if (selector?.exact) {
       const snapshot = collectVisibleText(message);
       const exactStarts = findTextOccurrences(snapshot.text, selector.exact);
       if (exactStarts.length > 0) {
-        score += 3;
+        score += 4;
         score += scoreSelectorContextPresence(snapshot.text, selector);
 
         if (Number.isFinite(locator.selectedStart)) {
@@ -96,7 +156,7 @@
           score += Math.max(0, 2 - bestDistance / 350);
         }
       } else {
-        score -= 2;
+        score -= 5;
       }
     }
 
@@ -108,7 +168,7 @@
       return 0;
     }
 
-    return stableAttributes.reduce((score, attribute) => {
+    return stableAttributes.filter((attribute) => isStableAttributeName(attribute.name)).reduce((score, attribute) => {
       const exactDepthElement = getAncestorAtDepth(message, attribute.depth);
       const weight = getStableAttributeWeight(attribute);
       if (exactDepthElement && exactDepthElement.getAttribute(attribute.name) === attribute.value) {
@@ -127,13 +187,37 @@
       return String(adapterId);
     }
 
-    return message?.getAttribute?.("data-message-id")
+    const attributeId = message?.getAttribute?.("data-message-id")
       || message?.getAttribute?.("data-testid")
-      || message?.id
-      || "";
+      || message?.id;
+    if (attributeId) {
+      return attributeId;
+    }
+
+    // No stable DOM id (most non-ChatGPT platforms). Use the complete
+    // normalized answer as a deterministic content identity.
+    return computeMessageContentFingerprint(message);
+  }
+
+  function computeMessageContentFingerprint(message) {
+    if (!message) {
+      return "";
+    }
+    const hash = createElementTextHash(message);
+    if (!hash) {
+      return "";
+    }
+    return `fp:${hash}`;
+  }
+
+  function createElementTextHash(element) {
+    return core.hashComparableText(element?.innerText || element?.textContent || "");
   }
 
   function getStableAttributeWeight(attribute) {
+    if (attribute.name === "data-testid" && isPositionalMessageId(attribute.value)) {
+      return 1.5;
+    }
     if (attribute.name === "id") {
       return 5;
     }
@@ -152,6 +236,10 @@
     return attribute.name.startsWith("data-") ? 2 : 1;
   }
 
+  function isPositionalMessageId(value) {
+    return /^conversation-turn-\d+$/.test(String(value || ""));
+  }
+
   function scoreTextSimilarity(currentText, savedText, maxScore) {
     return core.scoreTextSimilarity(currentText, savedText, maxScore);
   }
@@ -162,6 +250,14 @@
 
   function findTextOccurrences(text, exact) {
     return core.findTextOccurrences(text, exact);
+  }
+
+  function getBestOffsetDistance(starts, selectedStart) {
+    if (!Number.isFinite(selectedStart)) {
+      return 0;
+    }
+
+    return Math.min(...starts.map((start) => Math.abs(start - selectedStart)));
   }
 
   function collectAssistantMessageElements() {
@@ -179,7 +275,7 @@
     return removeNestedMessageElements(uniqueElements([...platformMatches, ...selectorMatches])
       .filter((node) => !isInsideEditable(node))
       .filter((node) => !isInsideUserMessage(node))
-      .filter((node) => !node.closest(`#${DOCK_ID}, #${PANEL_ID}, #${BRANCH_PANEL_ID}, #${BUTTON_ID}, #${TOAST_ID}`))
+      .filter((node) => !node.closest(`#${DOCK_ID}, #${PANEL_ID}, #${BUTTON_ID}, #${TOAST_ID}`))
       .filter((node) => isVisible(node))
       .filter((node) => normalizeComparableText(node.innerText || node.textContent || "").length > 1));
   }
@@ -269,12 +365,20 @@
   }
 
   function isStableAttributeName(name) {
-    return name === "id"
-      || name === "aria-label"
-      || name === "data-testid"
-      || name === "data-message-author-role"
-      || name === "data-content"
-      || name.startsWith("data-");
+    return [
+      "id",
+      "aria-label",
+      "data-testid",
+      "data-test-id",
+      "data-message-id",
+      "data-turn-id",
+      "data-conversation-id",
+      "data-response-id",
+      "data-answer-id",
+      "data-message-author-role",
+      "data-content",
+      "data-role"
+    ].includes(String(name || "").toLowerCase());
   }
 
   function getAncestorChain(element, maxDepth) {
@@ -334,7 +438,7 @@
 
   function findAssistantMessageElement(node) {
     const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-    if (!element || isInsideEditable(element) || element.closest(`#${DOCK_ID}, #${PANEL_ID}, #${BRANCH_PANEL_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
+    if (!element || isInsideEditable(element) || element.closest(`#${DOCK_ID}, #${PANEL_ID}, #${BUTTON_ID}, #${TOAST_ID}`)) {
       return null;
     }
 
@@ -346,10 +450,6 @@
     const platformMatch = closestFromSelectors(element, activeAdapter.assistantSelectors);
     if (platformMatch && !isInsideUserMessage(platformMatch)) {
       return platformMatch;
-    }
-
-    if (activeAdapter.name !== "fallback") {
-      return null;
     }
 
     const fallbackMatch = closestFromSelectors(element, [
@@ -366,7 +466,12 @@
       "[class*='markdown']"
     ]);
 
-    if (fallbackMatch && !isInsideUserMessage(fallbackMatch) && !isInsideEditable(fallbackMatch)) {
+    if (
+      fallbackMatch
+      && !isInsideUserMessage(fallbackMatch)
+      && !isInsideEditable(fallbackMatch)
+      && !fallbackMatch.closest(`#${DOCK_ID}, #${PANEL_ID}, #${BUTTON_ID}, #${TOAST_ID}`)
+    ) {
       return fallbackMatch;
     }
 
@@ -553,13 +658,20 @@
         normalizeMessageLocator,
         normalizeStableAttribute,
         resolveMessageElement,
+        resolveMessageElements,
+        messageContainsSelectorText,
+        normalizeFullComparableText,
         scoreMessageLocatorMatch,
         scoreStableAttributeMatches,
         getStableMessageId,
+        computeMessageContentFingerprint,
+        createElementTextHash,
+        isPositionalMessageId,
         getStableAttributeWeight,
         scoreTextSimilarity,
         scoreSelectorContextPresence,
         findTextOccurrences,
+        getBestOffsetDistance,
         collectAssistantMessageElements,
         getAssistantMessageSelectors,
         removeNestedMessageElements,
