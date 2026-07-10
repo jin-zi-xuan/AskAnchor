@@ -1,12 +1,6 @@
 (function registerAskAnchorCore(global) {
   const SETTINGS_SCHEMA_VERSION = 1;
   const MESSAGE_LOCATOR_SUMMARY_LENGTH = 220;
-  const BRANCH_TITLE_LENGTH = 26;
-  const BRANCH_STATUSES = Object.freeze({
-    DRAFT: "draft",
-    SENT: "sent",
-    DONE: "done"
-  });
   const DEFAULT_SETTINGS = Object.freeze({
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     showCat: true,
@@ -82,6 +76,7 @@
       conversationUrl: typeof locator.conversationUrl === "string" ? locator.conversationUrl : "",
       assistantIndex: Number.isFinite(locator.assistantIndex) && locator.assistantIndex >= 0 ? locator.assistantIndex : -1,
       stableMessageId: typeof locator.stableMessageId === "string" ? locator.stableMessageId.slice(0, 220) : "",
+      assistantTextHash: typeof locator.assistantTextHash === "string" ? locator.assistantTextHash.slice(0, 64) : "",
       stableAttributes: Array.isArray(locator.stableAttributes)
         ? locator.stableAttributes
           .map(normalizeStableAttribute)
@@ -89,26 +84,10 @@
           .slice(0, 30)
         : [],
       previousUserSummary: normalizeComparableText(locator.previousUserSummary).slice(0, MESSAGE_LOCATOR_SUMMARY_LENGTH),
+      previousUserHash: typeof locator.previousUserHash === "string" ? locator.previousUserHash.slice(0, 64) : "",
       selectedStart: Number.isFinite(locator.selectedStart) ? locator.selectedStart : null,
       selectedEnd: Number.isFinite(locator.selectedEnd) ? locator.selectedEnd : null
     };
-  }
-
-  function normalizeBranchStatus(status) {
-    return status === BRANCH_STATUSES.SENT || status === BRANCH_STATUSES.DONE
-      ? status
-      : BRANCH_STATUSES.DRAFT;
-  }
-
-  function normalizeBranchTitle(title) {
-    const normalized = String(title || "").replace(/\s+/g, " ").trim();
-    if (!normalized) {
-      return "\u672a\u547d\u540d\u5206\u652f";
-    }
-    if (normalized.length <= BRANCH_TITLE_LENGTH) {
-      return normalized;
-    }
-    return `${normalized.slice(0, BRANCH_TITLE_LENGTH)}...`;
   }
 
   function scoreTextSimilarity(currentText, savedText, maxScore) {
@@ -155,19 +134,49 @@
     return starts;
   }
 
+  function hashComparableText(text) {
+    const normalized = String(text || "").replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return "";
+    }
+
+    let hash = 2166136261;
+    for (let index = 0; index < normalized.length; index += 1) {
+      hash ^= normalized.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function selectUniqueBestMatch(matches, minimumScore = 0, minimumMargin = 0) {
+    const sorted = (Array.isArray(matches) ? matches : [])
+      .filter((match) => match && Number.isFinite(match.score))
+      .sort((left, right) => right.score - left.score);
+    const best = sorted[0];
+    if (!best || best.score < minimumScore) {
+      return null;
+    }
+
+    const runnerUp = sorted[1];
+    if (runnerUp && best.score - runnerUp.score < minimumMargin) {
+      return null;
+    }
+
+    return best;
+  }
+
   const api = {
     DEFAULT_SETTINGS,
-    BRANCH_STATUSES,
     normalizeComparableText,
     normalizeEnabledPlatforms,
     normalizeSettings,
     normalizeMessageLocator,
     normalizeStableAttribute,
-    normalizeBranchStatus,
-    normalizeBranchTitle,
     scoreTextSimilarity,
     scoreSelectorContextPresence,
-    findTextOccurrences
+    findTextOccurrences,
+    hashComparableText,
+    selectUniqueBestMatch
   };
 
   global.AskAnchorCore = api;

@@ -25,7 +25,17 @@
         "button[aria-label*='Send' i]",
         "button[data-testid*='send' i]"
       ],
-      roleFromNode: (node) => node.getAttribute("data-message-author-role")
+      roleFromNode: (node) => node.getAttribute("data-message-author-role"),
+      getStableMessageId: (node) => {
+        const el = node && node.nodeType === Node.ELEMENT_NODE ? node : (node && node.parentElement);
+        if (!el) return "";
+        const message = el.closest("[data-message-id]") || el.querySelector?.("[data-message-id]");
+        const messageId = message?.getAttribute("data-message-id");
+        if (messageId) return messageId;
+        // Positional fallback used only as weak evidence after a refresh.
+        const turn = el.closest("[data-testid^='conversation-turn']");
+        return turn ? (turn.getAttribute("data-testid") || "") : "";
+      }
     }),
     createPlatformAdapter({
       name: "gemini",

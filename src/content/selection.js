@@ -142,11 +142,15 @@
     const sourceRange = selectionSnapshot.range.cloneRange();
     const selector = serializeRange(sourceRange, selectionSnapshot.messageElement);
     const messageLocator = createMessageLocator(selectionSnapshot.messageElement, selector);
+    const anchorV2Snapshot = createAnchorV2Snapshot(sourceRange, selectionSnapshot.messageElement, selector);
     const anchorDraft = {
       text: selectionSnapshot.text,
       range: sourceRange,
       selector,
       messageLocator,
+      blockLocator: anchorV2Snapshot?.blockLocator || null,
+      selectionLocator: anchorV2Snapshot?.selectionLocator || null,
+      anchorVersion: anchorV2Snapshot?.anchorVersion || 1,
       element: selectionSnapshot.messageElement,
       scrollY: window.scrollY
     };

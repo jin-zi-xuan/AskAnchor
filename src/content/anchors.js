@@ -3,7 +3,7 @@
 
   global.AskAnchorModules.anchors = function createAskAnchorAnchorsModule(ctx) {
     with (ctx) {
-  function addAnchor({ text, range, selector, messageLocator, marker, element, scrollY }) {
+  function addAnchor({ text, range, selector, messageLocator, blockLocator, selectionLocator, anchorVersion, marker, element, scrollY }) {
     const anchor = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       name: createAnchorName(text),
@@ -11,6 +11,9 @@
       range,
       selector,
       messageLocator,
+      blockLocator,
+      selectionLocator,
+      anchorVersion,
       marker,
       element,
       scrollY,
@@ -25,16 +28,26 @@
   }
 
   function serializeAnchorsForStorage() {
-    return anchors.map((anchor) => ({
-      id: anchor.id,
-      name: anchor.name,
-      text: anchor.text,
-      selector: anchor.selector,
-      messageLocator: anchor.messageLocator || null,
-      scrollY: anchor.scrollY,
-      createdAt: anchor.createdAt instanceof Date ? anchor.createdAt.toISOString() : anchor.createdAt,
-      status: normalizeAnchorStatus(anchor.status)
-    }));
+    return anchors.map((anchor) => {
+      const payload = {
+        id: anchor.id,
+        name: anchor.name,
+        text: anchor.text,
+        selector: anchor.selector,
+        messageLocator: anchor.messageLocator || null,
+        scrollY: anchor.scrollY,
+        createdAt: anchor.createdAt instanceof Date ? anchor.createdAt.toISOString() : anchor.createdAt,
+        status: normalizeAnchorStatus(anchor.status)
+      };
+
+      if (anchor.anchorVersion === 2) {
+        payload.anchorVersion = 2;
+        payload.blockLocator = anchor.blockLocator || null;
+        payload.selectionLocator = anchor.selectionLocator || null;
+      }
+
+      return payload;
+    });
   }
 
   function persistAnchorsToSession() {
@@ -126,19 +139,27 @@
       return false;
     }
 
-    anchors = storedAnchors.slice(0, MAX_ANCHORS).map((item) => ({
+    anchors = storedAnchors.slice(0, MAX_ANCHORS).map((item) => {
+      const blockLocator = normalizeBlockLocator(item.blockLocator);
+      const selectionLocator = normalizeSelectionLocator(item.selectionLocator);
+      const isV2 = item.anchorVersion === 2 && blockLocator && selectionLocator;
+      return {
         id: item.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         name: item.name || createAnchorName(item.text),
         text: item.text || "",
         selector: item.selector || null,
         messageLocator: normalizeMessageLocator(item.messageLocator),
+        blockLocator: isV2 ? blockLocator : null,
+        selectionLocator: isV2 ? selectionLocator : null,
+        anchorVersion: isV2 ? 2 : 1,
         scrollY: typeof item.scrollY === "number" ? item.scrollY : window.scrollY,
         createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
         status: normalizeAnchorStatus(item.status),
         range: null,
         marker: null,
         element: document.body
-      }));
+      };
+    });
     if (activeAnchorId && !anchors.some((anchor) => anchor.id === activeAnchorId)) {
       activeAnchorId = null;
     }
@@ -559,10 +580,28 @@
       return;
     }
 
+    clearRestoredRangeHighlight();
+    window.getSelection()?.removeAllRanges();
     activeAnchorId = id;
     renderAnchorDock();
 
     const restoredRange = resolveAnchorRange(anchor);
+    try {
+      if (localStorage.getItem("ask-anchor:debug")) {
+        const landedMsg = restoredRange ? findAssistantMessageElement(restoredRange.commonAncestorContainer) : null;
+        console.debug("[AskAnchor] returnToAnchor", {
+          name: anchor.name,
+          text: (anchor.text || "").slice(0, 50),
+          rangeFound: Boolean(restoredRange),
+          version: anchor.anchorVersion || 1,
+          savedStableId: anchor.messageLocator?.stableMessageId || "(none)",
+          savedIndex: anchor.messageLocator?.assistantIndex,
+          landedStableId: landedMsg ? (getStableMessageId(landedMsg) || "(none)") : "(no msg)"
+        });
+      }
+    } catch (debugError) {
+      /* debug logging must never break anchor flow */
+    }
     if (restoredRange && scrollToSavedRange(restoredRange)) {
       anchor.range = restoredRange.cloneRange();
       restoreSelectionHighlight(restoredRange);
@@ -576,11 +615,13 @@
     if (marker) {
       marker.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
       brieflyHighlight(target || marker);
-      restoreSelectionHighlight(anchor.range);
+      if (isAnchorRangeUsable(anchor.range, anchor.selector)) {
+        restoreSelectionHighlight(anchor.range);
+      }
       return;
     }
 
-    if (scrollToSavedRange(anchor.range)) {
+    if (isAnchorRangeUsable(anchor.range, anchor.selector) && scrollToSavedRange(anchor.range)) {
       restoreSelectionHighlight(anchor.range);
       brieflyHighlight(target || document.documentElement);
       return;
@@ -598,16 +639,39 @@
   }
 
   function getAnchorFallbackTarget(anchor) {
+    if (anchor.anchorVersion === 2 && anchor.blockLocator) {
+      const blockTarget = resolveAnchorV2BlockTarget(anchor);
+      if (blockTarget) {
+        return blockTarget;
+      }
+    }
+
     if (
       anchor.element
       && document.contains(anchor.element)
       && anchor.element !== document.body
       && anchor.element !== document.documentElement
+      && findAssistantMessageElement(anchor.element)
     ) {
       return anchor.element;
     }
 
     return resolveMessageElement(anchor.messageLocator, anchor.selector);
+  }
+
+  function resolveAnchorV2BlockTarget(anchor) {
+    const messageRoots = typeof resolveMessageElements === "function"
+      ? resolveMessageElements(anchor.messageLocator, anchor.selector)
+      : [resolveMessageElement(anchor.messageLocator, anchor.selector)].filter(Boolean);
+
+    for (const messageRoot of uniqueElements(messageRoots)) {
+      const block = resolveAnchorBlockCandidates(messageRoot, anchor.blockLocator, anchor.selectionLocator)[0];
+      if (block) {
+        return block;
+      }
+    }
+
+    return null;
   }
 
 
@@ -653,7 +717,92 @@
     };
   }
 
+  function createAnchorV2Snapshot(range, messageElement, selector) {
+    const messageRoot = findAssistantMessageElement(range?.commonAncestorContainer) || messageElement;
+    if (!range || !messageRoot || !selector?.exact) {
+      return null;
+    }
+
+    const block = getAnchorBlockForRange(range, messageRoot);
+    const blocks = collectAnchorTextBlocks(messageRoot);
+    const blockIndex = Math.max(0, blocks.indexOf(block));
+    const blockSnapshot = collectVisibleText(block);
+    const start = getTextOffsetInNodes(range.startContainer, range.startOffset, blockSnapshot.nodes);
+    const end = getTextOffsetInNodes(range.endContainer, range.endOffset, blockSnapshot.nodes);
+    if (start < 0 || end < start || !blockSnapshot.text) {
+      return null;
+    }
+
+    const normalizedBlock = normalizeTextWithOffsetMap(blockSnapshot.text);
+    const normalizedSelected = normalizeTextWithOffsetMap(range.toString());
+    const normalizedStart = getNormalizedOffsetForOriginalOffset(normalizedBlock.map, start);
+    const occurrences = findAllTextMatches(normalizedBlock.text, normalizedSelected.text);
+    const exactOccurrence = occurrences.indexOf(normalizedStart);
+    const occurrenceIndexInBlock = exactOccurrence >= 0
+      ? exactOccurrence
+      : getNearestOccurrenceIndex(occurrences, normalizedStart);
+
+    return {
+      anchorVersion: 2,
+      blockLocator: {
+        tag: block.tagName?.toLowerCase?.() || "",
+        index: blockIndex,
+        textHash: hashAnchorText(blockSnapshot.text),
+        previousTextHash: blocks[blockIndex - 1] ? hashAnchorText(collectVisibleText(blocks[blockIndex - 1]).text) : "",
+        nextTextHash: blocks[blockIndex + 1] ? hashAnchorText(collectVisibleText(blocks[blockIndex + 1]).text) : ""
+      },
+      selectionLocator: {
+        start,
+        end,
+        normalizedStart,
+        normalizedEnd: normalizedStart + normalizedSelected.text.length,
+        normalizedText: normalizedSelected.text,
+        occurrenceIndexInBlock,
+        occurrenceCountInBlock: occurrences.length
+      }
+    };
+  }
+
+  function normalizeBlockLocator(locator) {
+    if (!locator || typeof locator !== "object") {
+      return null;
+    }
+
+    return {
+      tag: String(locator.tag || "").toLowerCase(),
+      index: Number.isFinite(locator.index) ? locator.index : -1,
+      textHash: String(locator.textHash || ""),
+      previousTextHash: String(locator.previousTextHash || ""),
+      nextTextHash: String(locator.nextTextHash || "")
+    };
+  }
+
+  function normalizeSelectionLocator(locator) {
+    if (!locator || typeof locator !== "object") {
+      return null;
+    }
+
+    const normalizedText = String(locator.normalizedText || "");
+    if (!normalizedText) {
+      return null;
+    }
+
+    return {
+      start: Number.isFinite(locator.start) ? locator.start : null,
+      end: Number.isFinite(locator.end) ? locator.end : null,
+      normalizedStart: Number.isFinite(locator.normalizedStart) ? locator.normalizedStart : null,
+      normalizedEnd: Number.isFinite(locator.normalizedEnd) ? locator.normalizedEnd : null,
+      normalizedText,
+      occurrenceIndexInBlock: Number.isFinite(locator.occurrenceIndexInBlock) ? locator.occurrenceIndexInBlock : -1,
+      occurrenceCountInBlock: Number.isFinite(locator.occurrenceCountInBlock) ? locator.occurrenceCountInBlock : null
+    };
+  }
+
   function resolveAnchorRange(anchor) {
+    if (anchor.anchorVersion === 2 && anchor.blockLocator && anchor.selectionLocator) {
+      return resolveAnchorV2Range(anchor);
+    }
+
     if (isAnchorRangeUsable(anchor.range, anchor.selector)) {
       return anchor.range.cloneRange();
     }
@@ -686,6 +835,173 @@
     return null;
   }
 
+  function resolveAnchorV2Range(anchor) {
+    const messageRoots = typeof resolveMessageElements === "function"
+      ? resolveMessageElements(anchor.messageLocator, anchor.selector)
+      : [resolveMessageElement(anchor.messageLocator, anchor.selector)].filter(Boolean);
+
+    for (const messageRoot of uniqueElements(messageRoots)) {
+      const blockCandidates = resolveAnchorBlockCandidates(messageRoot, anchor.blockLocator, anchor.selectionLocator);
+      for (const block of blockCandidates) {
+        const range = createRangeFromSelectionLocator(block, anchor.selectionLocator);
+        if (isTrustedRestoredRange(range, messageRoot, anchor.selectionLocator, anchor.selector)) {
+          anchor.element = block;
+          return range;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function resolveAnchorBlockCandidates(messageRoot, blockLocator, selectionLocator) {
+    const blocks = collectAnchorTextBlocks(messageRoot);
+    if (blocks.length === 0) {
+      return [messageRoot];
+    }
+
+    const candidates = blocks
+      .map((block, index) => ({
+        block,
+        score: scoreAnchorBlockMatch(block, index, blocks, blockLocator, selectionLocator),
+        textHashMatched: Boolean(
+          blockLocator?.textHash
+          && hashAnchorText(collectVisibleText(block).text) === blockLocator.textHash
+        ),
+        containsSelection: Boolean(
+          selectionLocator?.normalizedText
+          && normalizeTextWithOffsetMap(collectVisibleText(block).text).text.includes(selectionLocator.normalizedText)
+        )
+      }))
+      .filter((candidate) => candidate.containsSelection)
+      .sort((a, b) => b.score - a.score);
+
+    const exactHashCandidates = candidates.filter((candidate) => candidate.textHashMatched);
+    const candidatePool = exactHashCandidates.length > 0 ? exactHashCandidates : candidates;
+    const trustedCandidate = core.selectUniqueBestMatch(candidatePool, exactHashCandidates.length > 0 ? 12 : 7, 2);
+    return trustedCandidate ? [trustedCandidate.block] : [];
+  }
+
+  function isTrustedRestoredRange(range, messageRoot, selectionLocator, selector) {
+    if (!range || !messageRoot || !selectionLocator?.normalizedText) {
+      return false;
+    }
+
+    const commonAncestorElement = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+    if (
+      !messageRoot.contains(range.startContainer)
+      || !messageRoot.contains(range.endContainer)
+      || !commonAncestorElement
+      || isInsideUserMessage(commonAncestorElement)
+      || !findAssistantMessageElement(range.commonAncestorContainer)
+    ) {
+      return false;
+    }
+
+    return normalizeTextForAnchorComparison(range.toString()) === selectionLocator.normalizedText
+      && doesRestoredRangeContextMatch(range, messageRoot, selector);
+  }
+
+  function doesRestoredRangeContextMatch(range, messageRoot, selector) {
+    if (!selector?.prefix && !selector?.suffix) {
+      return true;
+    }
+
+    const restoredSelector = serializeRange(range, messageRoot);
+    if (!restoredSelector) {
+      return false;
+    }
+
+    const contextMatches = [];
+    if (selector.prefix) {
+      contextMatches.push(
+        normalizeTextForAnchorComparison(restoredSelector.prefix)
+          .endsWith(normalizeTextForAnchorComparison(selector.prefix))
+      );
+    }
+    if (selector.suffix) {
+      contextMatches.push(
+        normalizeTextForAnchorComparison(restoredSelector.suffix)
+          .startsWith(normalizeTextForAnchorComparison(selector.suffix))
+      );
+    }
+
+    return contextMatches.some(Boolean);
+  }
+
+  function scoreAnchorBlockMatch(block, index, blocks, blockLocator, selectionLocator) {
+    let score = 0;
+    const text = collectVisibleText(block).text;
+    const textHash = hashAnchorText(text);
+    const normalizedBlock = normalizeTextWithOffsetMap(text);
+    const hasSelectionText = selectionLocator?.normalizedText
+      && normalizedBlock.text.includes(selectionLocator.normalizedText);
+
+    if (blockLocator?.textHash && textHash === blockLocator.textHash) {
+      score += 12;
+    }
+    if (blockLocator?.tag && block.tagName?.toLowerCase?.() === blockLocator.tag) {
+      score += 1;
+    }
+    if (Number.isFinite(blockLocator?.index) && blockLocator.index >= 0) {
+      const distance = Math.abs(index - blockLocator.index);
+      score += distance === 0 ? 6 : Math.max(0, 4 - distance);
+    }
+    if (blockLocator?.previousTextHash && blocks[index - 1] && hashAnchorText(collectVisibleText(blocks[index - 1]).text) === blockLocator.previousTextHash) {
+      score += 3;
+    }
+    if (blockLocator?.nextTextHash && blocks[index + 1] && hashAnchorText(collectVisibleText(blocks[index + 1]).text) === blockLocator.nextTextHash) {
+      score += 3;
+    }
+    if (hasSelectionText) {
+      score += 4;
+    } else {
+      score -= 6;
+    }
+
+    return score;
+  }
+
+  function createRangeFromSelectionLocator(block, selectionLocator) {
+    if (!selectionLocator?.normalizedText) {
+      return null;
+    }
+
+    const snapshot = collectVisibleText(block);
+    const normalizedBlock = normalizeTextWithOffsetMap(snapshot.text);
+    const matches = findAllTextMatches(normalizedBlock.text, selectionLocator.normalizedText);
+    if (matches.length === 0) {
+      return null;
+    }
+
+    const occurrenceIndex = selectionLocator.occurrenceIndexInBlock;
+    if (
+      Number.isFinite(selectionLocator.occurrenceCountInBlock)
+      && selectionLocator.occurrenceCountInBlock !== matches.length
+    ) {
+      return null;
+    }
+    if (occurrenceIndex >= matches.length) {
+      return null;
+    }
+    const matchStart = occurrenceIndex >= 0 && occurrenceIndex < matches.length
+      ? matches[occurrenceIndex]
+      : matches[getNearestOccurrenceIndex(matches, selectionLocator.normalizedStart || 0)];
+    const matchEnd = matchStart + selectionLocator.normalizedText.length;
+    const originalStart = normalizedBlock.map[matchStart];
+    const originalEnd = matchEnd < normalizedBlock.map.length
+      ? normalizedBlock.map[matchEnd]
+      : snapshot.text.length;
+
+    if (!Number.isFinite(originalStart) || !Number.isFinite(originalEnd) || originalEnd <= originalStart) {
+      return null;
+    }
+
+    return createRangeFromOffsets(snapshot.nodes, originalStart, originalEnd);
+  }
+
   function isAnchorRangeUsable(range, selector) {
     if (!isRangeUsable(range)) {
       return false;
@@ -704,19 +1020,94 @@
   }
 
   function getAnchorSearchFallbackRoots(anchor) {
+    // Only fall back to the cached message element. Do NOT re-scan all
+    // assistant messages here: resolveMessageElements already covers them
+    // (including its selector.exact proximity fallback in dom.js), and a
+    // document-order scan here returns the first message containing the
+    // text — causing the "jumps to another turn with the same text" bug.
+    // When this returns empty, returnToAnchor degrades to
+    // getAnchorFallbackTarget (scrolls to the right message + toast).
     const roots = [];
     if (
       anchor.element
       && document.contains(anchor.element)
       && anchor.element !== document.body
       && anchor.element !== document.documentElement
+      && findAssistantMessageElement(anchor.element)
       && !isInsideUserMessage(anchor.element)
     ) {
       roots.push(anchor.element);
     }
 
-    roots.push(...collectAssistantMessageElements());
     return uniqueElements(roots);
+  }
+
+  function getAnchorBlockForRange(range, messageRoot) {
+    const startElement = range.startContainer.nodeType === Node.ELEMENT_NODE
+      ? range.startContainer
+      : range.startContainer.parentElement;
+    const endElement = range.endContainer.nodeType === Node.ELEMENT_NODE
+      ? range.endContainer
+      : range.endContainer.parentElement;
+    const startBlock = getClosestAnchorBlock(startElement, messageRoot);
+    const endBlock = getClosestAnchorBlock(endElement, messageRoot);
+
+    if (startBlock && startBlock === endBlock) {
+      return startBlock;
+    }
+
+    const container = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+    return getClosestAnchorBlock(container, messageRoot) || messageRoot;
+  }
+
+  function getClosestAnchorBlock(element, messageRoot) {
+    let current = element;
+    while (current && current !== document.documentElement) {
+      if (messageRoot.contains(current) && isAnchorTextBlock(current)) {
+        return current;
+      }
+      if (current === messageRoot) {
+        break;
+      }
+      current = current.parentElement;
+    }
+
+    return messageRoot;
+  }
+
+  function collectAnchorTextBlocks(messageRoot) {
+    const selectors = [
+      "p",
+      "li",
+      "blockquote",
+      "pre",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "td",
+      "th",
+      "caption",
+      "figcaption"
+    ];
+
+    const blocks = uniqueElements([
+      messageRoot,
+      ...selectors.flatMap((selector) => Array.from(messageRoot.querySelectorAll(selector)))
+    ])
+      .filter((block) => !isInsideUserMessage(block))
+      .filter((block) => !block.closest(`#${DOCK_ID}, #${PANEL_ID}, #${BUTTON_ID}, #${TOAST_ID}`))
+      .filter((block) => normalizeTextForAnchorComparison(collectVisibleText(block).text).length > 0);
+
+    return blocks.length > 0 ? blocks : [messageRoot];
+  }
+
+  function isAnchorTextBlock(element) {
+    return Boolean(element?.matches?.("p, li, blockquote, pre, h1, h2, h3, h4, h5, h6, td, th, caption, figcaption"));
   }
 
 
@@ -751,7 +1142,6 @@
     }
 
     const normalizedStart = getNormalizedOffsetForOriginalOffset(normalizedText.map, selector.start || 0);
-    const candidates = [];
     const candidates = findAllTextMatches(normalizedText.text, normalizedExact.text);
 
     const bestNormalizedStart = candidates
@@ -816,6 +1206,16 @@
     return normalizeTextWithOffsetMap(text).text;
   }
 
+  function hashAnchorText(text) {
+    const normalized = normalizeTextForAnchorComparison(text);
+    let hash = 2166136261;
+    for (let index = 0; index < normalized.length; index += 1) {
+      hash ^= normalized.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
   function findAllTextMatches(text, exact) {
     const matches = [];
     if (!text || !exact) {
@@ -828,6 +1228,23 @@
       index = text.indexOf(exact, index + 1);
     }
     return matches;
+  }
+
+  function getNearestOccurrenceIndex(occurrences, expectedStart) {
+    if (!occurrences.length) {
+      return -1;
+    }
+
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    occurrences.forEach((start, index) => {
+      const distance = Math.abs(start - (expectedStart || 0));
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    });
+    return bestIndex;
   }
 
   function getNormalizedOffsetForOriginalOffset(map, originalOffset) {
@@ -865,11 +1282,33 @@
     const prefix = text.slice(prefixStart, start);
     const suffix = text.slice(start + selector.exact.length, start + selector.exact.length + (selector.suffix || "").length);
 
+    let prefixMatched = false;
     if (selector.prefix && prefix.endsWith(selector.prefix)) {
       score += 3;
+      prefixMatched = true;
     }
+    let suffixMatched = false;
     if (selector.suffix && suffix.startsWith(selector.suffix)) {
       score += 3;
+      suffixMatched = true;
+    }
+    // Whitespace-tolerant fallback: half credit when only normalization
+    // (collapsed whitespace / trimmed) differs. Guards against platform
+    // re-renders that slightly change surrounding whitespace, which would
+    // otherwise zero out context and leave only the offset penalty.
+    if (!prefixMatched && selector.prefix) {
+      const normPrefix = normalizeTextForAnchorComparison(prefix);
+      const normSavedPrefix = normalizeTextForAnchorComparison(selector.prefix);
+      if (normPrefix && normSavedPrefix && normPrefix.endsWith(normSavedPrefix)) {
+        score += 1.5;
+      }
+    }
+    if (!suffixMatched && selector.suffix) {
+      const normSuffix = normalizeTextForAnchorComparison(suffix);
+      const normSavedSuffix = normalizeTextForAnchorComparison(selector.suffix);
+      if (normSuffix && normSavedSuffix && normSuffix.startsWith(normSavedSuffix)) {
+        score += 1.5;
+      }
     }
     score -= Math.min(8, Math.abs(start - (selector.start || 0)) / 250);
     return score;
@@ -1155,9 +1594,26 @@
         returnToAnchor,
         createSelectionMarker,
         serializeRange,
+        createAnchorV2Snapshot,
+        normalizeBlockLocator,
+        normalizeSelectionLocator,
         resolveAnchorRange,
+        resolveAnchorV2Range,
+        resolveAnchorV2BlockTarget,
+        resolveAnchorBlockCandidates,
+        isTrustedRestoredRange,
+        doesRestoredRangeContextMatch,
+        scoreAnchorBlockMatch,
+        createRangeFromSelectionLocator,
+        isAnchorRangeUsable,
+        getAnchorBlockForRange,
+        collectAnchorTextBlocks,
+        hashAnchorText,
         findRangeFromSelector,
         scoreSelectorMatch,
+        normalizeTextWithOffsetMap,
+        findAllTextMatches,
+        getNearestOccurrenceIndex,
         collectVisibleText,
         isVisibleTextNode,
         getTextOffsetInNodes,

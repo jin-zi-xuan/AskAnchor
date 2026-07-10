@@ -13,7 +13,7 @@
   const MIN_SELECTION_LENGTH = 2;
   const MAX_ANCHORS = 50;
   const ANCHOR_NAME_LENGTH = 28;
-  const SELECTION_CONTEXT_LENGTH = 42;
+  const SELECTION_CONTEXT_LENGTH = 100;
   const ANCHOR_STATUS_UNRESOLVED = "unresolved";
   const ANCHOR_STATUS_UNDERSTOOD = "understood";
   const UNNAMED_ANCHOR_NAME = "\u672a\u547d\u540d\u951a\u70b9";
@@ -22,17 +22,12 @@
   const CONVERSATION_ROOT_REFRESH_DELAY = 900;
   const CONVERSATION_TIMELINE_RENDER_DELAY = 450;
   const STORAGE_KEY_PREFIX = "ask-anchor:anchors:";
-  const BRANCH_STORAGE_KEY_PREFIX = "ask-anchor:branches:";
   const SETTINGS_STORAGE_KEY = "askAnchorSettings";
   const LEGACY_SETTINGS_STORAGE_KEY = "ask-anchor:settings";
   const SETTINGS_SCHEMA_VERSION = 1;
   const CAT_POSITION_STORAGE_KEY = "ask-anchor:cat-position";
   const TUCKED_CAT_TOP_STORAGE_KEY = "ask-anchor:tucked-cat-top";
   const DEFAULT_FOLLOW_UP_TEMPLATE_ID = "explain";
-  const MAX_BRANCHES = 20;
-  const BRANCH_STATUS_DRAFT = "draft";
-  const BRANCH_STATUS_SENT = "sent";
-  const BRANCH_STATUS_DONE = "done";
   const DEFAULT_SETTINGS = Object.freeze({
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     showCat: true,
@@ -93,11 +88,7 @@
   let currentSelection = null;
   let lastValidSelection = null;
   let anchors = [];
-  let branches = [];
   let activeAnchorId = null;
-  let activeBranchId = null;
-  let activeBranchAnchorId = null;
-  let editingBranchId = null;
   let pendingFollowUp = null;
   let pendingFollowUpTimer = null;
   let pendingFollowUpPollTimer = null;
@@ -111,7 +102,6 @@
   let askAnchorSettings = { ...DEFAULT_SETTINGS };
   let selectionTimer = null;
   let activeAnchorStorageKey = null;
-  let activeBranchStorageKey = null;
   let conversationTimelineTimer = null;
   let conversationRootRefreshTimer = null;
   let routePollTimer = null;
@@ -168,7 +158,6 @@
     CONVERSATION_ROOT_REFRESH_DELAY,
     CONVERSATION_TIMELINE_RENDER_DELAY,
     STORAGE_KEY_PREFIX,
-    BRANCH_STORAGE_KEY_PREFIX,
     SETTINGS_STORAGE_KEY,
     LEGACY_SETTINGS_STORAGE_KEY,
     SETTINGS_SCHEMA_VERSION,
@@ -177,10 +166,6 @@
     CAT_IMAGE_URL,
     CAT_PEEK_IMAGE_URL,
     DEFAULT_FOLLOW_UP_TEMPLATE_ID,
-    MAX_BRANCHES,
-    BRANCH_STATUS_DRAFT,
-    BRANCH_STATUS_SENT,
-    BRANCH_STATUS_DONE,
     DEFAULT_SETTINGS,
     COMMANDS,
     core,
@@ -195,11 +180,7 @@
     currentSelection: { get: () => currentSelection, set: (value) => { currentSelection = value; } },
     lastValidSelection: { get: () => lastValidSelection, set: (value) => { lastValidSelection = value; } },
     anchors: { get: () => anchors, set: (value) => { anchors = value; } },
-    branches: { get: () => branches, set: (value) => { branches = value; } },
     activeAnchorId: { get: () => activeAnchorId, set: (value) => { activeAnchorId = value; } },
-    activeBranchId: { get: () => activeBranchId, set: (value) => { activeBranchId = value; } },
-    activeBranchAnchorId: { get: () => activeBranchAnchorId, set: (value) => { activeBranchAnchorId = value; } },
-    editingBranchId: { get: () => editingBranchId, set: (value) => { editingBranchId = value; } },
     pendingFollowUp: { get: () => pendingFollowUp, set: (value) => { pendingFollowUp = value; } },
     pendingFollowUpTimer: { get: () => pendingFollowUpTimer, set: (value) => { pendingFollowUpTimer = value; } },
     pendingFollowUpPollTimer: { get: () => pendingFollowUpPollTimer, set: (value) => { pendingFollowUpPollTimer = value; } },
@@ -213,7 +194,6 @@
     askAnchorSettings: { get: () => askAnchorSettings, set: (value) => { askAnchorSettings = value; } },
     selectionTimer: { get: () => selectionTimer, set: (value) => { selectionTimer = value; } },
     activeAnchorStorageKey: { get: () => activeAnchorStorageKey, set: (value) => { activeAnchorStorageKey = value; } },
-    activeBranchStorageKey: { get: () => activeBranchStorageKey, set: (value) => { activeBranchStorageKey = value; } },
     conversationTimelineTimer: { get: () => conversationTimelineTimer, set: (value) => { conversationTimelineTimer = value; } },
     conversationRootRefreshTimer: { get: () => conversationRootRefreshTimer, set: (value) => { conversationRootRefreshTimer = value; } },
     routePollTimer: { get: () => routePollTimer, set: (value) => { routePollTimer = value; } },

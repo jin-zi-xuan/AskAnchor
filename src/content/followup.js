@@ -62,11 +62,14 @@
     }
 
     const sourceRange = resolveAnchorRange({
-      range: draft.range,
+      range: null,
       selector: draft.selector,
       messageLocator: draft.messageLocator,
+      blockLocator: draft.blockLocator,
+      selectionLocator: draft.selectionLocator,
+      anchorVersion: draft.anchorVersion,
       element: draft.element
-    }) || (draft.range?.cloneRange ? draft.range.cloneRange() : draft.range);
+    }) || (isAnchorRangeUsable(draft.range, draft.selector) ? draft.range.cloneRange() : null);
     const marker = sourceRange ? createSelectionMarker(sourceRange.cloneRange()) : null;
     const anchorElement = sourceRange
       ? getRangeHighlightTarget(sourceRange) || draft.element
@@ -77,6 +80,9 @@
       range: sourceRange,
       selector: draft.selector,
       messageLocator: draft.messageLocator,
+      blockLocator: draft.blockLocator,
+      selectionLocator: draft.selectionLocator,
+      anchorVersion: draft.anchorVersion,
       marker,
       element: anchorElement,
       scrollY: draft.scrollY
