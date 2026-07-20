@@ -61,7 +61,7 @@
       return null;
     }
 
-    const sourceRange = resolveAnchorRange({
+    const sourceRange = (isAnchorRangeUsable(draft.range, draft.selector) ? draft.range.cloneRange() : null) || resolveAnchorRange({
       range: null,
       selector: draft.selector,
       messageLocator: draft.messageLocator,
@@ -69,7 +69,7 @@
       selectionLocator: draft.selectionLocator,
       anchorVersion: draft.anchorVersion,
       element: draft.element
-    }) || (isAnchorRangeUsable(draft.range, draft.selector) ? draft.range.cloneRange() : null);
+    });
     const marker = sourceRange ? createSelectionMarker(sourceRange.cloneRange()) : null;
     const anchorElement = sourceRange
       ? getRangeHighlightTarget(sourceRange) || draft.element
@@ -85,7 +85,8 @@
       anchorVersion: draft.anchorVersion,
       marker,
       element: anchorElement,
-      scrollY: draft.scrollY
+      scrollY: draft.scrollY,
+      scrollPosition: draft.scrollPosition
     });
   }
 

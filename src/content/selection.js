@@ -152,7 +152,8 @@
       selectionLocator: anchorV2Snapshot?.selectionLocator || null,
       anchorVersion: anchorV2Snapshot?.anchorVersion || 1,
       element: selectionSnapshot.messageElement,
-      scrollY: window.scrollY
+      scrollY: window.scrollY,
+      scrollPosition: captureAnchorScrollPosition(sourceRange)
     };
     const knownUserElements = collectUserMessageElements();
     const knownUserNodes = new Set(knownUserElements);

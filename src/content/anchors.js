@@ -3,7 +3,10 @@
 
   global.AskAnchorModules.anchors = function createAskAnchorAnchorsModule(ctx) {
     with (ctx) {
-  function addAnchor({ text, range, selector, messageLocator, blockLocator, selectionLocator, anchorVersion, marker, element, scrollY }) {
+  const QUOTE_CARD_ID = "ask-anchor-quote-card";
+  const QUOTE_CONTEXT_LENGTH = 80;
+
+  function addAnchor({ text, range, selector, messageLocator, blockLocator, selectionLocator, anchorVersion, marker, element, scrollY, scrollPosition }) {
     const anchor = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       name: createAnchorName(text),
@@ -17,6 +20,7 @@
       marker,
       element,
       scrollY,
+      scrollPosition,
       createdAt: new Date(),
       status: ANCHOR_STATUS_UNRESOLVED
     };
@@ -44,6 +48,11 @@
         payload.anchorVersion = 2;
         payload.blockLocator = anchor.blockLocator || null;
         payload.selectionLocator = anchor.selectionLocator || null;
+      }
+
+      const scrollPosition = serializeAnchorScrollPosition(anchor.scrollPosition);
+      if (scrollPosition) {
+        payload.scrollPosition = scrollPosition;
       }
 
       return payload;
@@ -153,6 +162,7 @@
         selectionLocator: isV2 ? selectionLocator : null,
         anchorVersion: isV2 ? 2 : 1,
         scrollY: typeof item.scrollY === "number" ? item.scrollY : window.scrollY,
+        scrollPosition: normalizeAnchorScrollPosition(item.scrollPosition),
         createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
         status: normalizeAnchorStatus(item.status),
         range: null,
@@ -168,6 +178,22 @@
 
   function getAnchorStorageKey() {
     return `${STORAGE_KEY_PREFIX}${location.origin}${location.pathname}${location.search}`;
+  }
+
+  function serializeAnchorScrollPosition(position) {
+    if (!position || typeof position !== "object") {
+      return null;
+    }
+
+    return {
+      windowTop: Number.isFinite(position.windowTop) ? position.windowTop : null,
+      containerTop: Number.isFinite(position.containerTop) ? position.containerTop : null
+    };
+  }
+
+  function normalizeAnchorScrollPosition(position) {
+    const serialized = serializeAnchorScrollPosition(position);
+    return serialized ? { ...serialized, container: null } : null;
   }
 
   function handleConversationRouteChange() {
@@ -581,6 +607,7 @@
     }
 
     clearRestoredRangeHighlight();
+    clearAnchorQuoteCard();
     window.getSelection()?.removeAllRanges();
     activeAnchorId = id;
     renderAnchorDock();
@@ -617,6 +644,9 @@
       brieflyHighlight(target || marker);
       if (isAnchorRangeUsable(anchor.range, anchor.selector)) {
         restoreSelectionHighlight(anchor.range);
+      } else {
+        showAnchorQuoteCard(anchor, "message");
+        showToast("未能确认原文位置，已回到对应回答并保留原文卡片");
       }
       return;
     }
@@ -630,12 +660,16 @@
     if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "center" });
       brieflyHighlight(target);
-      showToast("\u672a\u80fd\u7cbe\u786e\u5339\u914d\u539f\u6587\uff0c\u5df2\u5b9a\u4f4d\u5230\u5bf9\u5e94\u56de\u7b54");
+      showAnchorQuoteCard(anchor, "message");
+      showToast("\u672a\u80fd\u786e\u8ba4\u539f\u6587\u4f4d\u7f6e\uff0c\u5df2\u56de\u5230\u5bf9\u5e94\u56de\u7b54\u5e76\u4fdd\u7559\u539f\u6587\u5361\u7247");
       return;
     }
 
-    window.scrollTo({ top: anchor.scrollY, behavior: "smooth" });
-    showToast("\u672a\u80fd\u7cbe\u786e\u5339\u914d\u539f\u6587\uff0c\u5df2\u56de\u5230\u4fdd\u5b58\u65f6\u7684\u6eda\u52a8\u4f4d\u7f6e");
+    const restoredScrollPosition = scrollToAnchorSavedPosition(anchor);
+    showAnchorQuoteCard(anchor, restoredScrollPosition ? "scroll" : "unavailable");
+    showToast(restoredScrollPosition
+      ? "\u672a\u80fd\u786e\u8ba4\u539f\u6587\u4f4d\u7f6e\uff0c\u5df2\u6062\u590d\u9605\u8bfb\u4f4d\u7f6e\u5e76\u4fdd\u7559\u539f\u6587\u5361\u7247"
+      : "\u672a\u80fd\u786e\u8ba4\u539f\u6587\u6216\u9605\u8bfb\u4f4d\u7f6e\uff0c\u5df2\u4fdd\u7559\u539f\u6587\u5361\u7247");
   }
 
   function getAnchorFallbackTarget(anchor) {
@@ -657,6 +691,70 @@
     }
 
     return resolveMessageElement(anchor.messageLocator, anchor.selector);
+  }
+
+  function getAnchorQuoteCardContent(anchor, location) {
+    const selector = anchor?.selector || {};
+    return {
+      text: String(selector.exact || anchor?.text || "").trim(),
+      prefix: String(selector.prefix || "").trim().slice(-QUOTE_CONTEXT_LENGTH),
+      suffix: String(selector.suffix || "").trim().slice(0, QUOTE_CONTEXT_LENGTH),
+      locationLabel: location === "message"
+        ? "已回到对应回答"
+        : location === "scroll"
+          ? "已恢复保存时的阅读位置"
+          : "未能恢复页面阅读位置"
+    };
+  }
+
+  function clearAnchorQuoteCard() {
+    document.getElementById(QUOTE_CARD_ID)?.remove();
+  }
+
+  function createQuoteCardTextElement(tagName, className, text) {
+    const element = document.createElement(tagName);
+    element.className = className;
+    element.textContent = text;
+    return element;
+  }
+
+  function showAnchorQuoteCard(anchor, location) {
+    clearAnchorQuoteCard();
+    const quote = getAnchorQuoteCardContent(anchor, location);
+    const card = document.createElement("aside");
+    card.id = QUOTE_CARD_ID;
+    card.className = "ask-anchor-quote-card";
+    card.setAttribute("role", "status");
+    card.setAttribute("aria-label", "AskAnchor 原文卡片");
+
+    const header = document.createElement("div");
+    header.className = "ask-anchor-quote-card__header";
+    const meta = document.createElement("div");
+    meta.append(
+      createQuoteCardTextElement("div", "ask-anchor-quote-card__eyebrow", "原文位置未能确认"),
+      createQuoteCardTextElement("div", "ask-anchor-quote-card__location", quote.locationLabel)
+    );
+    const closeButton = createQuoteCardTextElement("button", "ask-anchor-quote-card__close", "×");
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", "关闭原文卡片");
+    closeButton.addEventListener("click", clearAnchorQuoteCard);
+    header.append(meta, closeButton);
+
+    card.append(header, createQuoteCardTextElement("blockquote", "ask-anchor-quote-card__text", quote.text));
+    if (quote.prefix || quote.suffix) {
+      const context = document.createElement("div");
+      context.className = "ask-anchor-quote-card__context";
+      if (quote.prefix) {
+        context.appendChild(createQuoteCardTextElement("div", "ask-anchor-quote-card__context-line", `前文：${quote.prefix}`));
+      }
+      if (quote.suffix) {
+        context.appendChild(createQuoteCardTextElement("div", "ask-anchor-quote-card__context-line", `后文：${quote.suffix}`));
+      }
+      card.appendChild(context);
+    }
+
+    document.documentElement.appendChild(card);
+    return card;
   }
 
   function resolveAnchorV2BlockTarget(anchor) {
@@ -1435,6 +1533,42 @@
     }
   }
 
+  function captureAnchorScrollPosition(range) {
+    const windowTop = Number.isFinite(window.scrollY) ? window.scrollY : 0;
+    const rect = getRangeRect(range);
+    const container = rect ? findScrollContainerForRect(rect) : null;
+    const isDocumentScroller = !container || container === document.documentElement || container === document.body;
+    return {
+      windowTop,
+      container: isDocumentScroller ? null : container,
+      containerTop: !isDocumentScroller && Number.isFinite(container.scrollTop) ? container.scrollTop : null
+    };
+  }
+
+  function scrollToAnchorSavedPosition(anchor) {
+    const position = anchor?.scrollPosition;
+    const container = position?.container;
+    const containerTop = position?.containerTop;
+    if (
+      container
+      && document.contains(container)
+      && Number.isFinite(containerTop)
+      && Math.abs(container.scrollTop - containerTop) > 1
+      && typeof container.scrollTo === "function"
+    ) {
+      container.scrollTo({ top: Math.max(0, containerTop), behavior: "smooth" });
+      return true;
+    }
+
+    const windowTop = Number.isFinite(position?.windowTop) ? position.windowTop : anchor?.scrollY;
+    if (!Number.isFinite(windowTop) || Math.abs(window.scrollY - windowTop) <= 1) {
+      return false;
+    }
+
+    window.scrollTo({ top: Math.max(0, windowTop), behavior: "smooth" });
+    return true;
+  }
+
   function isRangeUsable(range) {
     try {
       return Boolean(range && getRangeRect(range) && document.contains(range.commonAncestorContainer));
@@ -1592,6 +1726,9 @@
         getOrCreateStandaloneAnchorPanel,
         renderStandaloneAnchorPanel,
         returnToAnchor,
+        getAnchorQuoteCardContent,
+        clearAnchorQuoteCard,
+        showAnchorQuoteCard,
         createSelectionMarker,
         serializeRange,
         createAnchorV2Snapshot,
@@ -1621,6 +1758,8 @@
         createRangeFromOffsets,
         findTextPoint,
         scrollToSavedRange,
+        captureAnchorScrollPosition,
+        scrollToAnchorSavedPosition,
         isRangeUsable,
         scrollRectToCenter,
         findScrollContainerForRect,
