@@ -5,6 +5,8 @@
     with (ctx) {
   const QUOTE_CARD_ID = "ask-anchor-quote-card";
   const QUOTE_CONTEXT_LENGTH = 80;
+  let anchorNavigationId = 0;
+  let cancelPendingAnchorScroll = null;
 
   function addAnchor({ text, range, selector, messageLocator, blockLocator, selectionLocator, anchorVersion, marker, element, scrollY, scrollPosition }) {
     const anchor = {
@@ -187,7 +189,11 @@
 
     return {
       windowTop: Number.isFinite(position.windowTop) ? position.windowTop : null,
-      containerTop: Number.isFinite(position.containerTop) ? position.containerTop : null
+      containerTop: Number.isFinite(position.containerTop) ? position.containerTop : null,
+      scrollContainers: Array.isArray(position.scrollContainers)
+        ? position.scrollContainers.filter((item) => typeof item?.selector === 'string' && Number.isFinite(item.top))
+          .map((item) => ({ selector: item.selector, top: item.top }))
+        : null
     };
   }
 
@@ -203,6 +209,8 @@
       return;
     }
 
+    cancelPendingAnchorScroll?.();
+    anchorNavigationId += 1;
     activeAnchorStorageKey = nextKey;
     closeAnchorList();
     resetConversationTimeline();
@@ -600,11 +608,14 @@
   }
 
 
-  function returnToAnchor(id) {
+  async function returnToAnchor(id) {
     const anchor = anchors.find((item) => item.id === id);
     if (!anchor) {
       return;
     }
+
+    cancelPendingAnchorScroll?.();
+    const navigationId = ++anchorNavigationId;
 
     clearRestoredRangeHighlight();
     clearAnchorQuoteCard();
@@ -629,7 +640,11 @@
     } catch (debugError) {
       /* debug logging must never break anchor flow */
     }
-    if (restoredRange && scrollToSavedRange(restoredRange)) {
+    const landed = restoredRange && await scrollToSavedRange(restoredRange);
+    if (navigationId !== anchorNavigationId) {
+      return;
+    }
+    if (landed) {
       anchor.range = restoredRange.cloneRange();
       restoreSelectionHighlight(restoredRange);
       brieflyHighlight(getRangeHighlightTarget(restoredRange) || anchor.element);
@@ -651,7 +666,12 @@
       return;
     }
 
-    if (isAnchorRangeUsable(anchor.range, anchor.selector) && scrollToSavedRange(anchor.range)) {
+    const cachedRangeLanded = isAnchorRangeUsable(anchor.range, anchor.selector)
+      && await scrollToSavedRange(anchor.range);
+    if (navigationId !== anchorNavigationId) {
+      return;
+    }
+    if (cachedRangeLanded) {
       restoreSelectionHighlight(anchor.range);
       brieflyHighlight(target || document.documentElement);
       return;
@@ -945,6 +965,30 @@
         if (isTrustedRestoredRange(range, messageRoot, anchor.selectionLocator, anchor.selector)) {
           anchor.element = block;
           return range;
+        }
+      }
+
+      // 段落重排或新增重复文字时，旧的块索引和出现次数可能失效。
+      // 只在已确认的回答内重找，并且必须由前后文唯一确定，不能按距离猜。
+      if (anchor.selector?.prefix?.trim() || anchor.selector?.suffix?.trim()) {
+        const snapshot = collectVisibleText(messageRoot);
+        const normalized = normalizeTextWithOffsetMap(snapshot.text);
+        const text = anchor.selectionLocator.normalizedText;
+        const matches = findAllTextMatches(normalized.text, text);
+        let trustedRange = null;
+        let ambiguous = false;
+        for (const start of matches) {
+          const range = createRangeFromOffsets(snapshot.nodes, normalized.map[start], normalized.map[start + text.length]);
+          if (!isTrustedRestoredRange(range, messageRoot, anchor.selectionLocator, anchor.selector)) continue;
+          if (trustedRange) {
+            ambiguous = true;
+            break;
+          }
+          trustedRange = range;
+        }
+        if (trustedRange && !ambiguous) {
+          anchor.element = messageRoot;
+          return trustedRange;
         }
       }
     }
@@ -1459,17 +1503,23 @@
   }
 
   function getTextOffsetInNodes(container, offset, nodes) {
+    if (container.nodeType === Node.ELEMENT_NODE) {
+      // 元素偏移是 childNodes 索引。尤其在段落结尾，没有下一个文本节点
+      // 可以命中，必须比较真实 DOM 边界，不能把它当作文本节点偏移。
+      const boundary = document.createRange();
+      boundary.setStart(container, offset);
+      boundary.collapse(true);
+      let total = 0;
+      for (const node of nodes) {
+        if (boundary.comparePoint(node, 0) >= 0) return total;
+        total += node.textContent.length;
+      }
+      return total;
+    }
     let total = 0;
     for (const node of nodes) {
       if (node === container) {
         return total + offset;
-      }
-      if (container.nodeType === Node.ELEMENT_NODE && container.contains(node)) {
-        const child = getDirectChildContaining(container, node);
-        const childIndex = child ? Array.prototype.indexOf.call(container.childNodes, child) : -1;
-        if (childIndex >= offset) {
-          return total;
-        }
       }
       total += node.textContent.length;
     }
@@ -1515,49 +1565,227 @@
   }
 
   function scrollToSavedRange(range) {
-    if (!range) {
-      return false;
+    cancelPendingAnchorScroll?.();
+    if (!range || !document.contains(range.startContainer) || !getAnchorReadingRect(range)) {
+      return Promise.resolve(false);
     }
 
-    try {
-      const rect = getRangeRect(range);
-      if (!rect) {
-        return false;
+    // Range 会随 DOM 编辑移动；等待期间也要检查它仍然指向同一段文字。
+    const expectedText = range.toString();
+    const containers = getAnchorScrollContainers(range.startContainer);
+    const startedAt = performance.now();
+    return new Promise((resolve) => {
+      let timer;
+      let settled = false;
+      let stableSince = null;
+      let corrections = 0;
+      let lastCorrection = 0;
+      const finish = (success) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+          window.removeEventListener(type, interrupt, true);
+        }
+        if (cancelPendingAnchorScroll === cancel) cancelPendingAnchorScroll = null;
+        resolve(success);
+      };
+      const cancel = () => {
+        // 同时终止尚未完成的原生平滑滚动。
+        for (const container of containers) {
+          container.scrollTo({ top: container.scrollTop, behavior: 'instant' });
+        }
+        finish(false);
+      };
+      const interrupt = (event) => {
+        if (event.type === 'keydown' && !['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Escape'].includes(event.key)) return;
+        anchorNavigationId += 1;
+        cancel();
+      };
+      cancelPendingAnchorScroll = cancel;
+      for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+        window.addEventListener(type, interrupt, { capture: true, passive: true });
       }
 
-      scrollRectToCenter(rect);
-      return true;
-    } catch (error) {
-      console.debug("[AskAnchor] Failed to scroll to saved range:", error);
-      return false;
+      const align = (behavior) => {
+        for (const container of containers) {
+          const rect = getAnchorReadingRect(range);
+          if (!rect) return;
+          const top = getAnchorScrollTop(rect, container);
+          if (Math.abs(container.scrollTop - top) > 2) container.scrollTo({ top, behavior });
+        }
+      };
+      const check = () => {
+        try {
+          if (!document.contains(range.startContainer) || !document.contains(range.endContainer)
+              || range.toString() !== expectedText || containers.some((container) => !document.contains(container))) {
+            finish(false);
+            return;
+          }
+          const rect = getAnchorReadingRect(range);
+          const elapsed = performance.now() - startedAt;
+          const aligned = rect && containers.every((container) => (
+            Math.abs(container.scrollTop - getAnchorScrollTop(rect, container)) <= 3
+          ));
+          const visible = rect && rect.bottom > 0 && rect.top < window.innerHeight
+            && containers.every((container) => {
+              const viewport = getAnchorScrollViewport(container);
+              return rect.top >= viewport.top - 2 && rect.top < viewport.bottom;
+            });
+          if (aligned && visible) {
+            if (stableSince === null) stableSince = elapsed;
+            // 给平滑滚动、字体和流式布局留一个有限的稳定观察窗口。
+            if (elapsed >= 650 && elapsed - stableSince >= 240) {
+              finish(true);
+              return;
+            }
+          } else {
+            stableSince = null;
+            if (elapsed >= 400 && elapsed - lastCorrection >= 160 && corrections < 4) {
+              align('instant');
+              corrections += 1;
+              lastCorrection = elapsed;
+            }
+          }
+          if (elapsed >= 1600) {
+            finish(Boolean(aligned && visible));
+            return;
+          }
+          timer = window.setTimeout(check, 60);
+        } catch (error) {
+          console.debug('[AskAnchor] Failed to verify anchor position:', error);
+          finish(false);
+        }
+      };
+      try {
+        align('smooth');
+        timer = window.setTimeout(check, 60);
+      } catch (error) {
+        finish(false);
+      }
+    });
+  }
+
+  function getAnchorReadingRect(range) {
+    // 多行或跨段选区以第一行作为阅读落点，不能用整个选区的中心。
+    return Array.from(range.getClientRects()).find((rect) => rect.width > 0 && rect.height > 0) || null;
+  }
+
+  function getAnchorScrollContainers(node) {
+    const containers = [];
+    let element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    const documentScroller = document.scrollingElement || document.documentElement;
+    while (element && element !== document.documentElement) {
+      if (element !== documentScroller && isAnchorScrollContainer(element)) containers.push(element);
+      element = element.parentElement;
     }
+    containers.push(documentScroller);
+    return containers;
+  }
+
+  function isAnchorScrollContainer(element) {
+    const style = window.getComputedStyle(element);
+    return /(auto|scroll|overlay)/.test(style.overflowY)
+      && element.scrollHeight > element.clientHeight + 1;
+  }
+
+  function getAnchorScrollViewport(container) {
+    const isDocument = container === (document.scrollingElement || document.documentElement);
+    const box = isDocument ? { top: 0, left: 0, right: window.innerWidth } : container.getBoundingClientRect();
+    const top = box.top + (isDocument ? 0 : container.clientTop);
+    let bottom = top + (isDocument ? window.innerHeight : container.clientHeight);
+    const editor = typeof findPromptEditor === 'function' ? findPromptEditor() : null;
+    if (editor) {
+      const editorBox = editor.getBoundingClientRect();
+      if (editorBox.width > 0 && editorBox.top > top && editorBox.top < bottom
+          && editorBox.right > box.left && editorBox.left < box.right) bottom = editorBox.top;
+    }
+    return { top, bottom };
+  }
+
+  function getAnchorScrollTop(rect, container) {
+    const viewport = getAnchorScrollViewport(container);
+    const top = container.scrollTop + rect.top - viewport.top - (viewport.bottom - viewport.top) * 0.42;
+    return Math.max(0, Math.min(top, container.scrollHeight - container.clientHeight));
   }
 
   function captureAnchorScrollPosition(range) {
     const windowTop = Number.isFinite(window.scrollY) ? window.scrollY : 0;
-    const rect = getRangeRect(range);
-    const container = rect ? findScrollContainerForRect(rect) : null;
+    const containers = range ? getAnchorScrollContainers(range.startContainer) : [];
+    const container = containers[0];
     const isDocumentScroller = !container || container === document.documentElement || container === document.body;
     return {
       windowTop,
       container: isDocumentScroller ? null : container,
-      containerTop: !isDocumentScroller && Number.isFinite(container.scrollTop) ? container.scrollTop : null
+      containerTop: !isDocumentScroller && Number.isFinite(container.scrollTop) ? container.scrollTop : null,
+      scrollContainers: containers.filter((item) => item !== (document.scrollingElement || document.documentElement))
+        .map((item) => ({ selector: getAnchorContainerSelector(item), top: item.scrollTop }))
     };
+  }
+
+  function getAnchorContainerSelector(element) {
+    const parts = [];
+    for (let current = element; current; current = current.parentElement) {
+      if (current.id) {
+        const idSelector = `#${CSS.escape(current.id)}`;
+        if (document.querySelectorAll(idSelector).length === 1) {
+          parts.unshift(idSelector);
+          break;
+        }
+      }
+      const tag = current.tagName.toLowerCase();
+      const siblings = current.parentElement
+        ? Array.from(current.parentElement.children).filter((child) => child.tagName === current.tagName)
+        : [current];
+      parts.unshift(`${tag}:nth-of-type(${siblings.indexOf(current) + 1})`);
+    }
+    return parts.join(' > ');
   }
 
   function scrollToAnchorSavedPosition(anchor) {
     const position = anchor?.scrollPosition;
-    const container = position?.container;
+    if (position?.scrollContainers?.length) {
+      // 原文可能位于独立滚动的代码框里，内外两层的位置不能混用。
+      try {
+        const restored = position.scrollContainers.map((saved) => {
+          const matches = document.querySelectorAll(saved.selector);
+          return { container: matches.length === 1 ? matches[0] : null, top: saved.top };
+        });
+        if (restored.some((item, index) => !item.container || !Number.isFinite(item.top)
+            || !isAnchorScrollContainer(item.container)
+            || (index > 0 && !item.container.contains(restored[index - 1].container)))) return false;
+        const root = typeof findConversationRoot === 'function' ? findConversationRoot() : null;
+        if (root && !root.contains(restored[0].container) && !restored[0].container.contains(root)) return false;
+        for (const { container, top } of restored) container.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
+        if (Number.isFinite(position.windowTop)) window.scrollTo({ top: Math.max(0, position.windowTop), behavior: 'instant' });
+        return restored.every(({ container, top }) => Math.abs(container.scrollTop - Math.max(0, top)) <= 2)
+          && (!Number.isFinite(position.windowTop) || Math.abs(window.scrollY - Math.max(0, position.windowTop)) <= 2);
+      } catch (error) {
+        return false;
+      }
+    }
+    let container = position?.container;
     const containerTop = position?.containerTop;
+    if ((!container || !document.contains(container)) && Number.isFinite(containerTop)) {
+      const root = typeof findConversationRoot === 'function' ? findConversationRoot() : null;
+      if (root) {
+        // 旧记录没有容器身份；出现多层滚动区时不能把内层值套给外层。
+        const candidates = [...getAnchorScrollContainers(root), ...Array.from(root.querySelectorAll('*')).filter(isAnchorScrollContainer)]
+          .filter((item) => item !== (document.scrollingElement || document.documentElement));
+        const unique = [...new Set(candidates)];
+        container = unique.length === 1 ? unique[0] : null;
+      }
+      if (!container) return false;
+    }
     if (
       container
       && document.contains(container)
       && Number.isFinite(containerTop)
-      && Math.abs(container.scrollTop - containerTop) > 1
       && typeof container.scrollTo === "function"
     ) {
-      container.scrollTo({ top: Math.max(0, containerTop), behavior: "smooth" });
-      return true;
+      const top = Math.max(0, containerTop);
+      container.scrollTo({ top, behavior: "instant" });
+      return Math.abs(container.scrollTop - top) <= 2;
     }
 
     const windowTop = Number.isFinite(position?.windowTop) ? position.windowTop : anchor?.scrollY;
@@ -1565,8 +1793,8 @@
       return false;
     }
 
-    window.scrollTo({ top: Math.max(0, windowTop), behavior: "smooth" });
-    return true;
+    window.scrollTo({ top: Math.max(0, windowTop), behavior: "instant" });
+    return Math.abs(window.scrollY - Math.max(0, windowTop)) <= 2;
   }
 
   function isRangeUsable(range) {
@@ -1577,8 +1805,8 @@
     }
   }
 
-  function scrollRectToCenter(rect) {
-    const container = findScrollContainerForRect(rect);
+  function scrollRectToCenter(rect, sourceNode) {
+    const container = findScrollContainerForRect(rect, sourceNode);
     if (!container || container === document.documentElement || container === document.body) {
       const top = rect.top + window.scrollY - window.innerHeight * 0.42;
       window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
@@ -1593,21 +1821,9 @@
     });
   }
 
-  function findScrollContainerForRect(rect) {
-    const centerX = Math.max(0, Math.min(window.innerWidth - 1, rect.left + rect.width / 2));
-    const centerY = Math.max(0, Math.min(window.innerHeight - 1, rect.top + rect.height / 2));
-    let element = document.elementFromPoint(centerX, centerY);
-
-    while (element && element !== document.documentElement) {
-      const style = window.getComputedStyle(element);
-      const canScroll = /(auto|scroll|overlay)/.test(`${style.overflowY} ${style.overflow}`);
-      if (canScroll && element.scrollHeight > element.clientHeight + 8) {
-        return element;
-      }
-      element = element.parentElement;
-    }
-
-    return document.scrollingElement || document.documentElement;
+  function findScrollContainerForRect(rect, sourceNode) {
+    const root = sourceNode || (typeof findConversationRoot === 'function' ? findConversationRoot() : null);
+    return getAnchorScrollContainers(root)[0];
   }
 
   function restoreSelectionHighlight(range) {

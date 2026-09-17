@@ -242,6 +242,23 @@ describe("anchor persistence", () => {
     });
   });
 
+  it("round-trips nested scroll positions without persisting DOM references", async () => {
+    const ctx = createBaseCtx(localStore);
+    const anchors = anchorsModule(ctx);
+    const scrollContainers = [{ selector: "#code", top: 300 }, { selector: "#chat", top: 650 }];
+    ctx.anchors = [{ id: "nested", text: "原文", scrollPosition: {
+      container: { nodeType: 1 }, containerTop: 300, windowTop: 0, scrollContainers
+    } }];
+    anchors.persistAnchorsToSession();
+    const saved = localStore.get(anchors.getAnchorStorageKey())[0];
+    expect(saved.scrollPosition).toEqual({ windowTop: 0, containerTop: 300, scrollContainers });
+    session.clear();
+    ctx.anchors = [];
+    anchors.loadAnchorsFromSession();
+    await flushPromises();
+    expect(ctx.anchors[0].scrollPosition).toEqual({ windowTop: 0, containerTop: 300, scrollContainers, container: null });
+  });
+
   it("migrates legacy session anchors into extension storage", async () => {
     const ctx = createBaseCtx(localStore);
     const anchors = anchorsModule(ctx);

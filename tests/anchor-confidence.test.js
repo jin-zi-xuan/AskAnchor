@@ -144,7 +144,7 @@ describe("restored anchor confidence", () => {
 
   it("restores the live chat scroll container before the window", () => {
     const anchors = createAnchors();
-    const containerScrollTo = vi.fn();
+    const containerScrollTo = vi.fn(({ top }) => { container.scrollTop = top; });
     const windowScrollTo = vi.fn();
     const container = { scrollTop: 100, scrollTo: containerScrollTo };
     globalThis.document = { contains: (node) => node === container };
@@ -153,7 +153,7 @@ describe("restored anchor confidence", () => {
     expect(anchors.scrollToAnchorSavedPosition({
       scrollPosition: { container, containerTop: 420, windowTop: 0 }
     })).toBe(true);
-    expect(containerScrollTo).toHaveBeenCalledWith({ top: 420, behavior: "smooth" });
+    expect(containerScrollTo).toHaveBeenCalledWith({ top: 420, behavior: "instant" });
     expect(windowScrollTo).not.toHaveBeenCalled();
   });
 

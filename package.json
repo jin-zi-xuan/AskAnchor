@@ -3,9 +3,11 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "node tests/browser/anchor-scroll.mjs"
   },
   "devDependencies": {
+    "playwright": "^1.63.0",
     "vitest": "^3.2.4"
   }
 }
