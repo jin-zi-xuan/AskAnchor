@@ -6,11 +6,14 @@
 | --- | --- |
 | macOS + Chrome 153 | 14 个核心流程浏览器回归用例通过 |
 | macOS + Edge 153 | 同一组 14 个浏览器回归用例通过 |
-| Windows + Chrome / Edge | 预期可使用同一安装包，尚未在 Windows 上实测 |
+| Windows Server 2025 + Chrome 152.0.7977.83 | 14 个浏览器回归用例通过 |
+| Windows Server 2025 + Edge 152.0.4191.66 | 同一组 14 个浏览器回归用例通过 |
 | Firefox | 当前发布包不支持，不能直接当作 Firefox 安装包 |
 | Safari | 未完成转换、签名和验证，不提供安装包 |
 
 浏览器回归使用本地模拟聊天页面，包括加载全部生产内容脚本、保存锚点、重载、列表点击、回跳与高亮。通过这些测试不等于所有在线 AI 网站均已逐一验证。
+
+Windows 验证在 GitHub 托管环境运行，另有 32 项单元测试和 ZIP 解压校验通过。[查看测试记录](https://github.com/jin-zi-xuan/AskAnchor/actions/runs/35194714597)。尚未在 Windows 10 / 11 实机上手动安装验收。
 
 ## 安装
 

@@ -44,7 +44,7 @@ ChatGPT、Gemini、Claude、Perplexity、Poe、Copilot、DeepSeek、Kimi、豆�
 
 Edge 的安装方法相同，扩展管理页是 `edge://extensions`。安装包不用编译，也不用安装 Node.js。
 
-目前已在 macOS 的 Chrome、Edge 上完成核心流程回归测试。Windows 同浏览器版本待实测；Firefox 和 Safari 暂不支持此安装包。
+macOS 和 Windows 测试环境中的 Chrome、Edge 已通过核心流程回归。Windows 使用 GitHub 的 Windows Server 2025，尚未在 Win10 / Win11 实机上手动验收。[详细测试范围](BROWSER_SUPPORT.md)。Firefox 和 Safari 暂不支持此安装包。
 
 更新插件后，记得在扩展管理页重新加载，再刷新聊天页面。
 

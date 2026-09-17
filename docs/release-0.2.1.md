@@ -23,7 +23,8 @@
 
 - 32 个单元测试通过。
 - macOS Chrome 153、Edge 153：各 14 个核心流程浏览器回归用例通过。
-- Windows Chrome / Edge：预期可使用同一包，尚未实测。
+- Windows Server 2025：Chrome 152、Edge 152 各 14 项回归通过，32 项单元测试与 ZIP 解压检查通过。[测试记录](https://github.com/jin-zi-xuan/AskAnchor/actions/runs/35194714597)。
+- Windows 使用 GitHub 托管环境，尚未在 Win10 / Win11 实机上手动安装验收。
 - 本安装包不支持 Firefox / Safari。
 
 浏览器测试使用本地模拟聊天页面，尚未逐一验证所有在线 AI 平台。历史消息尚未加载或网站改版时，原文定位仍可能失败。
