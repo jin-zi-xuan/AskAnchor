@@ -1,71 +1,37 @@
-# Browser Support
+# 浏览器兼容情况
 
-AskAnchor is a Manifest V3 WebExtension. The same source supports Chrome, Edge,
-Firefox, and Safari through target-specific build folders.
+当前测试版：0.2.1。安装包面向桌面版 Chrome / Edge，操作系统兼容性与浏览器兼容性分开记录。
 
-## Build
+| 环境 | 当前结论 |
+| --- | --- |
+| macOS + Chrome 153 | 14 个核心流程浏览器回归用例通过 |
+| macOS + Edge 153 | 同一组 14 个浏览器回归用例通过 |
+| Windows + Chrome / Edge | 预期可使用同一安装包，尚未在 Windows 上实测 |
+| Firefox | 当前发布包不支持，不能直接当作 Firefox 安装包 |
+| Safari | 未完成转换、签名和验证，不提供安装包 |
 
-```bash
-node scripts/build-browser-targets.js
+浏览器回归使用本地模拟聊天页面，包括加载全部生产内容脚本、保存锚点、重载、列表点击、回跳与高亮。通过这些测试不等于所有在线 AI 网站均已逐一验证。
+
+## 安装
+
+下载 Release 附件 `AskAnchor-0.2.1-chromium.zip` 并解压。Chrome 打开 `chrome://extensions`；Edge 打开 `edge://extensions`。开启开发者模式，点击“加载已解压的扩展程序”，选中包含 `manifest.json` 的文件夹，然后刷新 AI 页面。
+
+不用安装开发依赖。更新时重新加载扩展，并刷新 AI 页面。
+
+## 为什么暂时不承诺 Firefox
+
+当前 manifest 使用 Chrome / Edge 的 `background.service_worker`。Firefox 的扩展后台需要 `background.scripts` 等适配，此外设置存储、快捷键和高亮等行为仍需单独验证。仓库旧的 `build-browser-targets.js` 只是生成目标目录，不能据此判定浏览器可用，本次发布不使用那些未经验证的目标。
+
+参考：[MDN 后台配置说明](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background)、[Microsoft Edge 扩展说明](https://learn.microsoft.com/en-us/microsoft-edge/extensions/)。
+
+## 复查与打包
+
+```sh
+npm test
+npm run test:browser
+# macOS / Linux，已安装 Edge 时：
+BROWSER_CHANNEL=msedge npm run test:browser
+npm run package
 ```
 
-The command creates:
-
-- `dist/chrome`
-- `dist/edge`
-- `dist/firefox`
-- `dist/safari`
-
-## Chrome
-
-1. Open `chrome://extensions`.
-2. Enable Developer mode.
-3. Choose Load unpacked.
-4. Select `dist/chrome`.
-
-For local development, loading the project root also works.
-
-## Edge
-
-1. Open `edge://extensions`.
-2. Enable Developer mode.
-3. Choose Load unpacked.
-4. Select `dist/edge`.
-
-## Firefox
-
-1. Open `about:debugging#/runtime/this-firefox`.
-2. Choose Load Temporary Add-on.
-3. Select `dist/firefox/manifest.json`.
-
-Firefox uses the standard `browser.runtime` API. AskAnchor falls back to
-`chrome.runtime` for Chromium browsers and Safari.
-
-## Safari
-
-Safari Web Extensions are distributed through a Safari app wrapper. Build the
-Safari target first, then convert it with Apple's converter:
-
-```bash
-xcrun safari-web-extension-converter dist/safari
-```
-
-Open the generated Xcode project, run the app, then enable AskAnchor in Safari's
-Extensions settings.
-
-## Compatibility Notes
-
-- Chrome and Edge use the same MV3 manifest shape.
-- Firefox receives an additional Gecko extension id in its generated manifest.
-- Safari should be converted from `dist/safari`; it cannot be loaded directly
-  like Chrome, Edge, or Firefox.
-- The content script avoids hard-coding the Chrome-only global and resolves
-  extension assets through `browser.runtime` or `chrome.runtime`.
-- Platform enablement is stored in extension local storage under
-  `askAnchorSettings`. All supported platforms default to enabled.
-- Disabling a platform stops AskAnchor from mounting UI or reading that
-  platform page after refresh; already-open pages also receive the setting
-  change and clean up injected AskAnchor UI.
-- Site permissions remain declared in the manifest for Chrome, Edge, Firefox,
-  and Safari. The settings page provides user control after install, but it does
-  not reduce the first-install host permission prompt.
+Windows PowerShell 可以先设置 `$env:BROWSER_CHANNEL = "msedge"`，再运行浏览器测试。打包脚本需要 Python 3，安装插件本身不需要。

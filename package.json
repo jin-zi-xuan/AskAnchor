@@ -1,10 +1,11 @@
 {
   "name": "askanchor",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "scripts": {
     "test": "vitest run",
-    "test:browser": "node tests/browser/anchor-scroll.mjs"
+    "test:browser": "node tests/browser/anchor-scroll.mjs",
+    "package": "python3 scripts/package-chromium.py"
   },
   "devDependencies": {
     "playwright": "^1.63.0",

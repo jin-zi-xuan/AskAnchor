@@ -1,0 +1,48 @@
+name: Windows 浏览器验证
+
+on:
+  push:
+    branches: [main, codex/anchor-restore-stability]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, msedge]
+    env:
+      BROWSER_CHANNEL: ${{ matrix.browser }}
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 安装依赖
+        run: |
+          npm install --global pnpm@11.9.0
+          pnpm install --frozen-lockfile
+      - name: 单元测试
+        run: pnpm test
+      - name: Chrome 或 Edge 原文定位回归
+        run: pnpm test:browser
+      - name: 打包并验证解压文件
+        run: |
+          python scripts/package-chromium.py
+          python scripts/verify-package.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.browser }}-package
+          path: dist/*
+          if-no-files-found: error

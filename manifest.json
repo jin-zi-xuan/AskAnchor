@@ -1,9 +1,12 @@
 {
   "manifest_version": 3,
   "name": "AskAnchor",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Ask follow-up questions from selected AI response text and jump back to saved anchors.",
-  "permissions": ["clipboardWrite", "storage"],
+  "permissions": [
+    "clipboardWrite",
+    "storage"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -74,13 +77,18 @@
         "src/content/dom.js",
         "contentScript.js"
       ],
-      "css": ["styles.css"],
+      "css": [
+        "styles.css"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["assets/askanchor-cat-perch.png", "assets/askanchor-cat-peek-right.png"],
+      "resources": [
+        "assets/askanchor-cat-perch.png",
+        "assets/askanchor-cat-peek-right.png"
+      ],
       "matches": [
         "https://chatgpt.com/*",
         "https://chat.openai.com/*",

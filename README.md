@@ -37,10 +37,14 @@ ChatGPT、Gemini、Claude、Perplexity、Poe、Copilot、DeepSeek、Kimi、豆�
 
 以 Chrome 为例：
 
-1. 下载这个仓库并解压。
+1. [下载问猫测试版](https://github.com/jin-zi-xuan/AskAnchor/releases/tag/v0.2.1)，选择 `AskAnchor-0.2.1-chromium.zip` 并解压。
 2. 打开 `chrome://extensions`，开启「开发者模式」。
 3. 点击「加载已解压的扩展程序」，选择包含 `manifest.json` 的文件夹。
 4. 打开支持的 AI 网站；已经打开的页面刷新一下，小猫就来了。
+
+Edge 的安装方法相同，扩展管理页是 `edge://extensions`。安装包不用编译，也不用安装 Node.js。
+
+目前已在 macOS 的 Chrome、Edge 上完成核心流程回归测试。Windows 同浏览器版本待实测；Firefox 和 Safari 暂不支持此安装包。
 
 更新插件后，记得在扩展管理页重新加载，再刷新聊天页面。
 
